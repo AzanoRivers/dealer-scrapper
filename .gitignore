@@ -1,0 +1,355 @@
+**/.vscode
+.vscode
+.vscode/*
+.vscode/
+.vscode/settings.json   
+*bck/*
+*bck/
+*bck
+.idea/
+*.suo
+*.ntvs*
+next-env.d.ts
+*.njsproj
+*.sln
+*.sw?
+JQuery/chosen
+**/_env310
+**/_env310/*
+**/*cpython*
+**/*cpython*/*
+**/**node_modules/*
+**/**node_modules/*
+**/**node_modules
+node_modules
+jspm_packages/
+.pnp
+.pnp.js
+**/jspm_packages/
+*.vsix
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# vercel
+.vercel/
+
+# jetbrains setting folder
+.idea/
+# generated types
+.astro/
+
+# build output
+dist/
+
+# drizzle
+.drizzle/
+**/.drizzle/
+
+# WXT
+.output
+stats.html
+stats-*.json
+.wxt
+web-ext.config.ts
+
+
+### VirtualEnv ###
+# Virtualenv
+# http://iamzed.com/2009/05/07/a-primer-on-virtualenv/
+**/.Python
+**/pyvenv.cfg
+**/.venv
+**/_venv
+**/_venv/
+**/_venv/*
+**/_venv*/
+**/_venv*/*
+**/pip-selfcheck.json
+**/__pycache__
+**/__pycache__/*
+**/*pycache*/*
+.pytest_cache/
+.pytest_cache/*
+.pytest_cache/**/*
+**pytest_cache/
+**/pytest_cache/
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+**/.mypy_cache/
+**/.dmypy.json
+**/dmypy.json
+cython_debug/
+**/cython_debug/
+
+# Local History for Visual Studio Code
+**/.history/
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+**/$RECYCLE.BIN/
+
+### Windows ###
+# Windows thumbnail cache files
+**/Thumbs.db
+**/Thumbs.db:encryptable
+**/ehthumbs.db
+**/ehthumbs_vista.db
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+
+# Dump file
+*.stackdump
+**/*.stackdump
+
+# Folder config file
+[Dd]esktop.ini
+**/[Dd]esktop.ini
+
+# Windows shortcuts
+*.lnk
+**/*.lnk
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+**/*.cab
+**/*.msi
+**/*.msix
+**/*.msm
+**/*.msp
+
+# Spyder project settings
+.spyderproject
+.spyproject
+**/.spyderproject
+**/.spyproject
+
+# Rope project settings
+.ropeproject
+**/.ropeproject
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+__pypackages__/
+**/__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+**/celerybeat-schedule
+**/celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+**/*.sage.py
+
+# Flask stuff:
+instance/
+.webassets-cache
+**/instance/
+**/.webassets-cache
+
+### Node Patch ###
+# Serverless Webpack directories
+.webpack/
+**/.webpack/
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+**/.yarn/cache
+**/.yarn/unplugged
+**/.yarn/build-state.yml
+**/.yarn/install-state.gz
+**/.pnp.*
+
+# vuepress build output
+.vuepress/dist
+**/.vuepress/dist
+
+# vuepress v2.x temp and cache directory
+.temp
+**/.temp
+
+# Docusaurus cache and generated files
+.docusaurus
+**/.docusaurus
+
+# Serverless directories
+.serverless/
+**/.serverless/
+
+# FuseBox cache
+.fusebox/
+**/.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+**/.dynamodb/
+
+# TernJS port file
+.tern-port
+**/.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+**/.vscode-test
+
+# Snowpack dependency directory (https://snowpack.dev/)
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+out
+
+# Nuxt.js build / generate output
+.nuxt
+
+# Gatsby files
+.cache/
+
+# node-waf configuration
+.lock-wscript
+
+### Node ###
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+**/logs
+**/*.log
+**/npm-debug.log*
+**/yarn-debug.log*
+**/yarn-error.log*
+**/lerna-debug.log*
+**/.pnpm-debug.log*
+
+### Google Drive Sync
+**/.tmp.**
+**/.tmp.**/
+**/.tmp.**/
+**/.tmp.drivedownload
+**/.tmp.drivedownload*
+**/.tmp.drivedownload/*
+**/.tmp.drivedownload/
+**/.tmp.driveupload
+**/.tmp.driveupload*
+**/.tmp.driveupload/*
+**/.tmp.driveupload/
+**/desktop.ini*
+**/desktop.ini
+
+
+
+### BUILD ###
+**/build/*
+build/*
+build
+
+
+### C & C++ ###
+.cmake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+install_manifest.txt
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/Makefile
+**/CTestTestfile.cmake
+**/install_manifest.txt
+ALL_BUILD.dir
+ZERO_CHECK.dir
+Debug/
+Release/
+x64/
+build.log
+**/ALL_BUILD.dir/
+**/ZERO_CHECK.dir/
+**/Debug/
+**/Release/
+**/x64/
+
+# GODOT
+.import/
+.export/
+**/.import/
+**/.export/
+*.translation
+*.mono/
+**/*.translation
+**/*.mono/
+.godot/
+/android/
+
+# CLAUDE y GITHUB
+#claude-*
+#claude*
+#.claude*
+#**/claude*
+#**/claude-*
+#**/claude*
+#**/claude-*
+#.github/
+#**/.github/
+#.agents/
+#**/.agents/

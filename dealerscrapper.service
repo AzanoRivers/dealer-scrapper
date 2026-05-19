@@ -1,0 +1,23 @@
+[Unit]
+Description=DealerScrapper API
+After=network.target
+
+[Service]
+User=opc
+Group=opc
+WorkingDirectory=/home/opc/projects/dealerscrapper
+EnvironmentFile=-/home/opc/projects/dealerscrapper/.env
+ExecStart=/home/opc/projects/dealerscrapper/.venv/bin/gunicorn app.main:app \
+    -w 1 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8002 \
+    --timeout 600 \
+    --access-logfile /home/opc/projects/dealerscrapper/logs/access.log \
+    --error-logfile /home/opc/projects/dealerscrapper/logs/error.log
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

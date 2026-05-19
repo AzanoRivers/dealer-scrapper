@@ -1,0 +1,82 @@
+[
+  {
+    "id": "f01",
+    "name": "core_api_job_management",
+    "description": "FastAPI :8002, X-API-Key, gestión de jobs en disco, startup_cleanup, endpoints status/result/download/delete, guide-ai con todos los error_codes",
+    "status": "done",
+    "phase": 1,
+    "feature_file": ".claude/Features/188052025-build-fundation.md"
+  },
+  {
+    "id": "f02",
+    "name": "explorer_route_discovery",
+    "description": "Subagente Explorer: robots.txt, sitemap (anidado profundidad 2), homepage links, filtros, routes.json",
+    "status": "done",
+    "phase": 2,
+    "feature_file": ".claude/Features/f02-explorer-route-discovery.md"
+  },
+  {
+    "id": "f03",
+    "name": "fetcher_html_download",
+    "description": "Subagente Fetcher: semáforo asyncio, backoff, HTML a disco inmediato, fetch_results.json",
+    "status": "done",
+    "phase": 2,
+    "feature_file": ".claude/Features/f03-fetcher-html-download.md"
+  },
+  {
+    "id": "f04",
+    "name": "extractor_page_data",
+    "description": "Subagente Extractor: PageData completo, readability-lxml, limpieza raw/ al terminar, extract_results.json",
+    "status": "done",
+    "phase": 3,
+    "feature_file": ".claude/Features/f04-extractor-page-data.md"
+  },
+  {
+    "id": "f05",
+    "name": "auditor_coverage",
+    "description": "Subagente Auditor: cobertura, gaps, re-fetch parcial (máx 1 ciclo), integridad PageData, audit_report.json",
+    "status": "done",
+    "phase": 3,
+    "feature_file": ".claude/Features/f05-auditor-coverage.md"
+  },
+  {
+    "id": "f06",
+    "name": "guards_timeout_cleanup",
+    "description": "Guard 1 (global 30min), Guard 2 (LLM watchdog 5min con asyncio.Event), Guard 3 (TTL 15min post-done/failed con schedule_cleanup), startup_cleanup al arrancar",
+    "status": "done",
+    "phase": 4,
+    "feature_file": ".claude/Features/f06-guards-timeout-cleanup.md"
+  },
+  {
+    "id": "f07",
+    "name": "reviewer_llm_analysis",
+    "description": "Subagente Reviewer: LLM client 4 providers, batching 5 páginas, activity_event en 5+ puntos, detección de failed mid-run, result.json, limpieza chunk_summaries/",
+    "status": "done",
+    "phase": 4,
+    "feature_file": ".claude/Features/f07-reviewer-llm-analysis.md"
+  },
+  {
+    "id": "f08",
+    "name": "packager_output",
+    "description": "Subagente Packager: descarga imágenes (si aplica), limpieza de temporales, result.zip, status done, lanzar Guard 3",
+    "status": "done",
+    "phase": 5,
+    "feature_file": ".claude/Features/f08-packager-output.md"
+  },
+  {
+    "id": "f09",
+    "name": "images_endpoints",
+    "description": "GET /images (listado con ttl_remaining), GET /images/{filename} (StreamingResponse), 404 correcto post-TTL",
+    "status": "done",
+    "phase": 5,
+    "feature_file": ".claude/Features/f09-images-endpoints.md"
+  },
+  {
+    "id": "f10",
+    "name": "nginx_systemd_scripts",
+    "description": "dealerscrapper.conf, dealerscrapper.service, scripts/linux/setup.sh y deploy.sh",
+    "status": "done",
+    "phase": 5,
+    "feature_file": ".claude/Features/f10-nginx-systemd-scripts.md"
+  }
+]
