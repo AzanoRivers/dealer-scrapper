@@ -2,6 +2,16 @@
 
 **[English](#english) · [Español](#español)**
 
+![Python](https://img.shields.io/badge/Python-3.9-3776AB?style=flat&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115.0-009688?style=flat&logo=fastapi&logoColor=white)
+![Gunicorn](https://img.shields.io/badge/Gunicorn-22.0.0-499848?style=flat&logo=gunicorn&logoColor=white)
+![httpx](https://img.shields.io/badge/httpx-0.27.0-2088FF?style=flat&logo=python&logoColor=white)
+![BeautifulSoup4](https://img.shields.io/badge/BeautifulSoup4-4.12.3-orange?style=flat&logo=python&logoColor=white)
+![Oracle Cloud](https://img.shields.io/badge/Oracle_Cloud-ARM64-F80000?style=flat&logo=oracle&logoColor=white)
+![Cloudflare](https://img.shields.io/badge/Cloudflare-protected-F38020?style=flat&logo=cloudflare&logoColor=white)
+![nginx](https://img.shields.io/badge/nginx-proxy-009639?style=flat&logo=nginx&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-113%2F113%20passing-brightgreen?style=flat&logo=pytest&logoColor=white)
+
 ---
 
 ## English
@@ -10,28 +20,28 @@
 
 DealerScrapper is an async web scraping API built with FastAPI. It accepts a URL, crawls the site asynchronously, extracts structured business content using an LLM, and returns a `result.json` with business information, content topics, and images.
 
-Designed to run as a microservice on an Oracle Cloud Free Tier VPS (ARM64).
+Designed to run as a microservice on an Oracle Cloud VPS (ARM64).
 
 ### Stack
 
 | Component | Version | Details |
 |-----------|---------|---------|
-| Python | 3.9 | Runtime — chosen for ARM64 VPS compatibility |
-| FastAPI | 0.115.0 | Web framework — async endpoints, Pydantic validation, OpenAPI |
-| Gunicorn + UvicornWorker | 22.0.0 | Production server — 1 worker, ASGI, 600 s timeout |
-| httpx | 0.27.0 | Async HTTP client — crawling pages, calling LLM APIs |
-| beautifulsoup4 + lxml | 4.12.3 / 5.2.2 | HTML parsing — link extraction, sitemap parsing |
-| readability-lxml | 0.8.1 | Content extraction — strips nav/ads, returns clean article text |
-| pydantic-settings | 2.3.4 | Config management — typed settings loaded from `.env` |
+| Python | 3.9 | Runtime: chosen for ARM64 VPS compatibility |
+| FastAPI | 0.115.0 | Web framework: async endpoints, Pydantic validation, OpenAPI |
+| Gunicorn + UvicornWorker | 22.0.0 | Production server: 1 worker, ASGI, 600 s timeout |
+| httpx | 0.27.0 | Async HTTP client: crawling pages and calling LLM APIs |
+| beautifulsoup4 + lxml | 4.12.3 / 5.2.2 | HTML parsing: link extraction and sitemap parsing |
+| readability-lxml | 0.8.1 | Content extraction: strips nav/ads, returns clean article text |
+| pydantic-settings | 2.3.4 | Config management: typed settings loaded from `.env` |
 
-**Not used:** Playwright, Selenium, Chromium — too heavy for a 6 GB VPS shared with another service.
+**Not used:** Playwright, Selenium, Chromium (too heavy for production VPS deployment).
 
 ### Infrastructure
 
-- **VPS**: Oracle Cloud Free Tier — Ampere A1 (1 OCPU / 6 GB RAM / ARM64 / Oracle Linux)
+- **VPS**: Oracle Cloud Free Tier (ARM64, Oracle Linux)
 - **Domain**: `scraper.azanolabs.com` → Cloudflare → nginx → `127.0.0.1:8002`
-- **Port**: `8002` (OptimusApi uses `:8000`)
-- **SSL**: wildcard `*.azanolabs.com` shared with OptimusApi
+- **Port**: `8002`
+- **SSL**: wildcard `*.azanolabs.com`
 
 ### Quick Start (local development)
 
@@ -75,7 +85,7 @@ All `/api/v1/` endpoints require `X-API-Key` header.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/guide` | HTML API reference (this guide) |
+| `GET` | `/guide` | HTML API reference |
 | `GET` | `/guide-ai` | JSON reference for AI agents |
 | `GET` | `/api/v1/status` | Server health and active jobs |
 | `POST` | `/api/v1/scrape` | Create a scraping job |
@@ -86,9 +96,9 @@ All `/api/v1/` endpoints require `X-API-Key` header.
 | `GET` | `/api/v1/scrape/{job_id}/download` | Download `result.zip` |
 | `DELETE` | `/api/v1/scrape/{job_id}` | Cancel and delete job |
 
-For full documentation including parameters, error codes, and examples:  
-→ **`GET /guide`** (HTML, bilingual)  
-→ **`GET /guide-ai`** (JSON, for programmatic consumption)
+Full documentation with parameters, error codes, and examples:
+- **`GET /guide`** (HTML, bilingual)
+- **`GET /guide-ai`** (JSON, for programmatic consumption)
 
 ### Pipeline
 
@@ -99,7 +109,7 @@ queued → exploring → fetching → extracting → auditing → analyzing → 
 Three background guards protect every job:
 - **Guard 1**: 30-minute global timeout
 - **Guard 2**: 5-minute LLM inactivity watchdog (only during `analyzing`)
-- **Guard 3**: 15-minute TTL cleanup after `done`/`failed`
+- **Guard 3**: 15-minute TTL cleanup after `done` / `failed`
 
 ### Deploy to VPS
 
@@ -133,28 +143,28 @@ Current coverage: **113/113 tests passing**.
 
 DealerScrapper es una API de web scraping asíncrona construida con FastAPI. Acepta una URL, rastrea el sitio de forma asíncrona, extrae contenido de negocio estructurado usando un LLM y devuelve un `result.json` con información del negocio, temas de contenido e imágenes.
 
-Diseñado para correr como microservicio en un VPS Oracle Cloud Free Tier (ARM64), coexistiendo con OptimusApi en el mismo servidor.
+Diseñado para correr como microservicio en un VPS Oracle Cloud (ARM64).
 
 ### Stack
 
 | Componente | Versión | Detalles |
 |------------|---------|----------|
-| Python | 3.9 | Runtime — elegido por compatibilidad ARM64 en el VPS |
-| FastAPI | 0.115.0 | Framework web — endpoints async, validación Pydantic, OpenAPI |
-| Gunicorn + UvicornWorker | 22.0.0 | Servidor de producción — 1 worker, ASGI, timeout 600 s |
-| httpx | 0.27.0 | Cliente HTTP async — crawling de páginas y llamadas a APIs LLM |
-| beautifulsoup4 + lxml | 4.12.3 / 5.2.2 | Parsing HTML — extracción de links y sitemaps |
-| readability-lxml | 0.8.1 | Extracción de contenido — elimina nav/publicidad, devuelve texto limpio |
-| pydantic-settings | 2.3.4 | Gestión de configuración — settings tipados cargados desde `.env` |
+| Python | 3.9 | Runtime: elegido por compatibilidad ARM64 en el VPS |
+| FastAPI | 0.115.0 | Framework web: endpoints async, validación Pydantic, OpenAPI |
+| Gunicorn + UvicornWorker | 22.0.0 | Servidor de producción: 1 worker, ASGI, timeout 600 s |
+| httpx | 0.27.0 | Cliente HTTP async: crawling de páginas y llamadas a APIs LLM |
+| beautifulsoup4 + lxml | 4.12.3 / 5.2.2 | Parsing HTML: extracción de links y sitemaps |
+| readability-lxml | 0.8.1 | Extracción de contenido: elimina nav/publicidad, devuelve texto limpio |
+| pydantic-settings | 2.3.4 | Gestión de configuración: settings tipados cargados desde `.env` |
 
-**No se usa:** Playwright, Selenium, Chromium — demasiado pesados para un VPS de 6 GB compartido con otro servicio.
+**No se usa:** Playwright, Selenium, Chromium (demasiado pesados para un entorno de producción en VPS).
 
 ### Infraestructura
 
-- **VPS**: Oracle Cloud Free Tier — Ampere A1 (1 OCPU / 6 GB RAM / ARM64 / Oracle Linux)
+- **VPS**: Oracle Cloud Free Tier (ARM64, Oracle Linux)
 - **Dominio**: `scraper.azanolabs.com` → Cloudflare → nginx → `127.0.0.1:8002`
-- **Puerto**: `8002` (OptimusApi usa `:8000`)
-- **SSL**: wildcard `*.azanolabs.com` compartido con OptimusApi
+- **Puerto**: `8002`
+- **SSL**: wildcard `*.azanolabs.com`
 
 ### Inicio rápido (desarrollo local)
 
@@ -209,9 +219,9 @@ Todos los endpoints `/api/v1/` requieren el header `X-API-Key`.
 | `GET` | `/api/v1/scrape/{job_id}/download` | Descargar `result.zip` |
 | `DELETE` | `/api/v1/scrape/{job_id}` | Cancelar y eliminar job |
 
-Para documentación completa con parámetros, códigos de error y ejemplos:  
-→ **`GET /guide`** (HTML, bilingüe)  
-→ **`GET /guide-ai`** (JSON, para consumo programático)
+Documentación completa con parámetros, códigos de error y ejemplos:
+- **`GET /guide`** (HTML, bilingüe)
+- **`GET /guide-ai`** (JSON, para consumo programático)
 
 ### Pipeline
 
@@ -222,7 +232,7 @@ queued → exploring → fetching → extracting → auditing → analyzing → 
 Tres guards corren en paralelo protegiendo cada job:
 - **Guard 1**: timeout global de 30 minutos
 - **Guard 2**: watchdog de inactividad LLM de 5 minutos (solo durante `analyzing`)
-- **Guard 3**: cleanup TTL de 15 minutos tras `done`/`failed`
+- **Guard 3**: cleanup TTL de 15 minutos tras `done` / `failed`
 
 ### Deploy al VPS
 
