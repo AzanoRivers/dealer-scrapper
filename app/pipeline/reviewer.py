@@ -333,9 +333,12 @@ def _validate_schema_structure(
 # ---------------------------------------------------------------------------
 
 BATCH_SYSTEM_PROMPT: str = (
-    "Eres un asistente especializado en análisis de sitios web de concesionarios de automóviles y negocios. "
-    "Analiza las páginas proporcionadas y extrae información estructurada en JSON. "
-    "Responde ÚNICAMENTE con JSON válido, sin texto adicional."
+    "Eres un asistente especializado en análisis exhaustivo de sitios web y negocios. "
+    "Analiza TODAS las páginas proporcionadas con detalle y extrae información estructurada en JSON. "
+    "Para cada página, identifica y clasifica TODOS los elementos de contenido relevantes: "
+    "encabezados (h1, h2, h3), subtítulos, descripciones, meta descripciones, párrafos clave, "
+    "llamadas a la acción, datos de contacto, servicios, productos y cualquier texto significativo. "
+    "Responde ÚNICAMENTE con JSON válido, sin texto adicional ni explicaciones."
 )
 
 
@@ -366,23 +369,23 @@ def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
             section += f"\nMeta descripción: {meta_desc}"
 
         if headings:
-            headings_str = " | ".join(headings[:30])
+            headings_str = " | ".join(headings[:60])
             section += f"\nEncabezados: {headings_str}"
 
         if og:
             og_parts = [f"{k}: {v}" for k, v in og.items() if v]
             if og_parts:
-                section += f"\nOpen Graph: {', '.join(og_parts)[:600]}"
+                section += f"\nOpen Graph: {', '.join(og_parts)[:1200]}"
 
         if schema:
             try:
-                schema_str = json.dumps(schema, ensure_ascii=False)[:1200]
+                schema_str = json.dumps(schema, ensure_ascii=False)[:2500]
                 section += f"\nEsquema estructurado (JSON-LD): {schema_str}"
             except Exception:
                 pass
 
         if text:
-            section += f"\nContenido:\n{text[:2000]}"
+            section += f"\nContenido:\n{text[:5000]}"
 
         parts.append(section)
 
@@ -411,7 +414,14 @@ def build_schema_batch_prompt(
                 "- Mantén EXACTAMENTE las mismas claves y la misma estructura anidada.\n"
                 "- Usa null para campos sin información disponible en las páginas.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
-                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n\n"
+                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
+                "- Extrae el mayor número posible de páginas con contenido significativo.\n"
+                "- Para el campo 'elements' de cada página: incluye TODOS los elementos de "
+                "contenido relevantes con su tipo semántico ('h1', 'h2', 'h3', 'subtitle', "
+                "'description', 'meta_description', 'cta', 'service', 'product', 'paragraph', etc.) "
+                "y el texto exacto extraído. No omitas elementos con contenido útil.\n"
+                "- Para 'summary': genera un resumen detallado (mínimo 3-5 oraciones) del contenido "
+                "real de la página, no solo el título.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"Páginas a analizar:\n{pages_text}"
             ),
@@ -442,7 +452,10 @@ def build_schema_merge_prompt(
                 "- Mantén EXACTAMENTE las mismas claves y la misma estructura anidada.\n"
                 "- Usa null para campos sin información disponible.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
-                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n\n"
+                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
+                "- Consolida key_pages sin duplicados: si la misma URL aparece en varios "
+                "análisis parciales, fusiona sus 'elements' sin repetir entradas idénticas.\n"
+                "- Preserva TODOS los elementos de 'elements' de todas las páginas; no truncar.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"URL base del sitio: {base_url}\n\n"
                 f"Análisis parciales:\n{summaries_text}"
