@@ -369,23 +369,23 @@ def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
             section += f"\nMeta descripción: {meta_desc}"
 
         if headings:
-            headings_str = " | ".join(headings[:60])
+            headings_str = " | ".join(headings[:40])
             section += f"\nEncabezados: {headings_str}"
 
         if og:
             og_parts = [f"{k}: {v}" for k, v in og.items() if v]
             if og_parts:
-                section += f"\nOpen Graph: {', '.join(og_parts)[:1200]}"
+                section += f"\nOpen Graph: {', '.join(og_parts)[:800]}"
 
         if schema:
             try:
-                schema_str = json.dumps(schema, ensure_ascii=False)[:2500]
+                schema_str = json.dumps(schema, ensure_ascii=False)[:1500]
                 section += f"\nEsquema estructurado (JSON-LD): {schema_str}"
             except Exception:
                 pass
 
         if text:
-            section += f"\nContenido:\n{text[:5000]}"
+            section += f"\nContenido:\n{text[:2500]}"
 
         parts.append(section)
 
@@ -415,13 +415,11 @@ def build_schema_batch_prompt(
                 "- Usa null para campos sin información disponible en las páginas.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
-                "- Extrae el mayor número posible de páginas con contenido significativo.\n"
-                "- Para el campo 'elements' de cada página: incluye TODOS los elementos de "
-                "contenido relevantes con su tipo semántico ('h1', 'h2', 'h3', 'subtitle', "
-                "'description', 'meta_description', 'cta', 'service', 'product', 'paragraph', etc.) "
-                "y el texto exacto extraído. No omitas elementos con contenido útil.\n"
-                "- Para 'summary': genera un resumen detallado (mínimo 3-5 oraciones) del contenido "
-                "real de la página, no solo el título.\n\n"
+                "- Para el campo 'elements' de cada página: hasta 6 elementos con tipo semántico "
+                "('h1', 'h2', 'h3', 'subtitle', 'description', 'meta_description', 'cta', "
+                "'service', 'product') y texto de máximo 100 caracteres cada uno. "
+                "Si no hay elementos, devuelve [].\n"
+                "- Para 'summary': 2 oraciones concisas sobre el contenido real de la página.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"Páginas a analizar:\n{pages_text}"
             ),
