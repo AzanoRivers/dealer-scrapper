@@ -10,7 +10,7 @@
 ![Oracle Cloud](https://img.shields.io/badge/Oracle_Cloud-ARM64-F80000?style=flat&logo=oracle&logoColor=white)
 ![Cloudflare](https://img.shields.io/badge/Cloudflare-protected-F38020?style=flat&logo=cloudflare&logoColor=white)
 ![nginx](https://img.shields.io/badge/nginx-proxy-009639?style=flat&logo=nginx&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-113%2F113%20passing-brightgreen?style=flat&logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-127%2F127%20passing-brightgreen?style=flat&logo=pytest&logoColor=white)
 
 ---
 
@@ -100,6 +100,31 @@ Full documentation with parameters, error codes, and examples:
 - **`GET /guide`** (HTML, bilingual)
 - **`GET /guide-ai`** (JSON, for programmatic consumption)
 
+### POST /api/v1/scrape — Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | **Yes** | Website to scrape (HTTP/HTTPS) |
+| `response_schema` | object | **Yes** | JSON template the LLM must populate exactly. Use `"..."` for strings, `null` for nullable scalars, `["..."]` for arrays. Returns `422` if missing or `{}`. |
+| `options.max_pages` | integer | No | Max pages to crawl (default: `50`) |
+| `options.download_images` | boolean | No | Download images locally (default: `false`) |
+| `options.llm_provider` | string | No | Override LLM provider: `nvidia`, `openai`, `anthropic`, `deepseek`, `minimax` |
+| `options.llm_model` | string | No | Override model name (e.g. `moonshotai/kimi-k2.6`, `gpt-4o`) |
+
+**Example** (Eight-Legged Eddie deals cards and crawls sites — a spider of many talents):
+
+```json
+{
+  "url": "https://example-dealer.com",
+  "response_schema": {
+    "casino_name": "...",
+    "head_dealer": "...",
+    "poker_variants": ["..."],
+    "dress_code": null
+  }
+}
+```
+
 ### Pipeline
 
 ```
@@ -133,7 +158,7 @@ python -m pytest tests/ -v -x       # stop on first failure
 python -m pytest tests/test_f09_images.py -v  # specific module
 ```
 
-Current coverage: **113/113 tests passing**.
+Current coverage: **127/127 tests passing**.
 
 ---
 
@@ -223,6 +248,31 @@ Documentación completa con parámetros, códigos de error y ejemplos:
 - **`GET /guide`** (HTML, bilingüe)
 - **`GET /guide-ai`** (JSON, para consumo programático)
 
+### POST /api/v1/scrape — Body
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `url` | string | **Sí** | Sitio a scrapear (HTTP/HTTPS) |
+| `response_schema` | object | **Sí** | Plantilla JSON que el LLM debe completar exactamente. Usar `"..."` para strings, `null` para escalares anulables, `["..."]` para listas. Devuelve `422` si falta o es `{}`. |
+| `options.max_pages` | entero | No | Máximo de páginas (default: `50`) |
+| `options.download_images` | boolean | No | Descargar imágenes localmente (default: `false`) |
+| `options.llm_provider` | string | No | Override del provider: `nvidia`, `openai`, `anthropic`, `deepseek`, `minimax` |
+| `options.llm_model` | string | No | Override del modelo (ej. `moonshotai/kimi-k2.6`, `gpt-4o`) |
+
+**Ejemplo** (Eddie el Ocho Patas reparte cartas y rastrea sitios — araña de múltiples talentos):
+
+```json
+{
+  "url": "https://example-dealer.com",
+  "response_schema": {
+    "casino_name": "...",
+    "head_dealer": "...",
+    "poker_variants": ["..."],
+    "dress_code": null
+  }
+}
+```
+
 ### Pipeline
 
 ```
@@ -256,4 +306,4 @@ python -m pytest tests/ -v -x       # detener al primer fallo
 python -m pytest tests/test_f09_images.py -v  # módulo específico
 ```
 
-Cobertura actual: **113/113 tests pasando**.
+Cobertura actual: **127/127 tests pasando**.

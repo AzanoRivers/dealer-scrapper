@@ -396,12 +396,15 @@ _GUIDE_HTML = """<!DOCTYPE html>
         <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
         <tbody>
           <tr><td><code>url</code></td><td>string (URL)</td><td>Yes</td><td>&middot;</td><td>The website to scrape. Must be a valid HTTP/HTTPS URL.</td></tr>
+          <tr><td><code>response_schema</code></td><td>object</td><td><strong>Yes</strong></td><td>&middot;</td><td>JSON template defining the exact structure the LLM must populate. Every key in this object becomes a key in <code>result.json &rarr; data</code>. Use <code>"..."</code> for string fields, <code>null</code> for nullable scalars, <code>["..."]</code> for arrays. Returns <code>422</code> if missing or <code>{}</code>. Example: <code>{"business_name": "...", "phone": null, "brands": ["..."]}</code></td></tr>
           <tr><td><code>options.max_pages</code></td><td>integer</td><td>No</td><td>50</td><td>Maximum pages to crawl. Useful to limit cost and runtime for large sites.</td></tr>
           <tr><td><code>options.download_images</code></td><td>boolean</td><td>No</td><td>false</td><td>If true, images found in <code>result.json</code> are downloaded locally and included in the ZIP. Enables the <code>/images</code> endpoint.</td></tr>
           <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>server default</td><td>Override LLM provider: <code>nvidia</code>, <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
           <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>server default</td><td>Override specific model name (e.g. <code>moonshotai/kimi-k2.6</code>, <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
         </tbody>
       </table></div>
+      <div class="note"><strong>Comic example</strong> &mdash; a spider who also deals cards:<br>
+<code>response_schema: { "casino_name": "...", "head_dealer": "...", "poker_variants": ["..."], "dress_code": null }</code></div>
       <h3>Response</h3>
       <pre><code>{
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -471,6 +474,7 @@ _GUIDE_HTML = """<!DOCTYPE html>
           <tr><td><code>LLM_AUTH_ERROR</code></td><td>Invalid API key or no credits</td><td>null</td><td>Do not retry; fix config</td></tr>
           <tr><td><code>LLM_PARSE_ERROR</code></td><td>Malformed JSON response after 2 retries</td><td>60 s</td><td>Can retry</td></tr>
           <tr><td><code>JOB_TIMEOUT</code></td><td>Job exceeded 30-minute global timeout</td><td>600 s</td><td>Retry with smaller <code>max_pages</code></td></tr>
+          <tr><td><code>RESULT_SCHEMA_MISMATCH</code></td><td>LLM result does not conform to the <code>response_schema</code> structure</td><td>60 s</td><td>Review <code>response_schema</code> or retry</td></tr>
           <tr><td><code>INTERNAL_ERROR</code></td><td>Unexpected server error</td><td>60 s</td><td>Report to admin</td></tr>
         </tbody>
       </table></div>
@@ -508,7 +512,15 @@ _GUIDE_HTML = """<!DOCTYPE html>
       <pre><code>curl -X POST https://scraper.azanolabs.com/api/v1/scrape \\
   -H "X-API-Key: your-key" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "https://example-dealer.com"}'</code></pre>
+  -d '{
+    "url": "https://example-dealer.com",
+    "response_schema": {
+      "business_name": "...",
+      "phone": null,
+      "services": ["..."],
+      "address": "..."
+    }
+  }'</code></pre>
 
       <h3>Create a job with image download</h3>
       <pre><code>curl -X POST https://scraper.azanolabs.com/api/v1/scrape \\
@@ -516,6 +528,11 @@ _GUIDE_HTML = """<!DOCTYPE html>
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://example-dealer.com",
+    "response_schema": {
+      "business_name": "...",
+      "phone": null,
+      "services": ["..."]
+    },
     "options": {
       "download_images": true,
       "max_pages": 20
@@ -549,9 +566,18 @@ _GUIDE_HTML = """<!DOCTYPE html>
   -H "X-API-Key: your-key"</code></pre>
 
       <h3>Full polling loop (bash)</h3>
-      <pre><code>JOB_ID=$(curl -s -X POST https://scraper.azanolabs.com/api/v1/scrape \\
+      <pre><code># "Eight-Legged Eddie" deals cards and crawls sites — a spider of many talents
+JOB_ID=$(curl -s -X POST https://scraper.azanolabs.com/api/v1/scrape \\
   -H "X-API-Key: your-key" -H "Content-Type: application/json" \\
-  -d '{"url":"https://example-dealer.com"}' | jq -r '.job_id')
+  -d '{
+    "url": "https://example-dealer.com",
+    "response_schema": {
+      "casino_name": "...",
+      "head_dealer": "...",
+      "poker_variants": ["..."],
+      "dress_code": null
+    }
+  }' | jq -r '.job_id')
 
 while true; do
   STATUS=$(curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/status" \\
@@ -740,12 +766,15 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
         <thead><tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Default</th><th>Descripci&oacute;n</th></tr></thead>
         <tbody>
           <tr><td><code>url</code></td><td>string (URL)</td><td>S&iacute;</td><td>&middot;</td><td>El sitio web a scrapear. Debe ser una URL HTTP/HTTPS v&aacute;lida.</td></tr>
+          <tr><td><code>response_schema</code></td><td>object</td><td><strong>S&iacute;</strong></td><td>&middot;</td><td>Plantilla JSON que define la estructura exacta que el LLM debe completar. Cada clave de este objeto se convierte en clave en <code>result.json &rarr; data</code>. Usar <code>"..."</code> para strings, <code>null</code> para escalares anulables, <code>["..."]</code> para listas. Devuelve <code>422</code> si falta o es <code>{}</code>. Ejemplo: <code>{"business_name": "...", "phone": null, "brands": ["..."]}</code></td></tr>
           <tr><td><code>options.max_pages</code></td><td>entero</td><td>No</td><td>50</td><td>M&aacute;ximo de p&aacute;ginas a rastrear. &Uacute;til para limitar costo y tiempo en sitios grandes.</td></tr>
           <tr><td><code>options.download_images</code></td><td>boolean</td><td>No</td><td>false</td><td>Si true, las im&aacute;genes del <code>result.json</code> se descargan localmente y se incluyen en el ZIP. Habilita el endpoint <code>/images</code>.</td></tr>
           <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del provider LLM: <code>nvidia</code>, <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
           <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del nombre de modelo (ej. <code>moonshotai/kimi-k2.6</code>, <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
         </tbody>
       </table></div>
+      <div class="note"><strong>Ejemplo c&oacute;mico</strong> &mdash; una ara&ntilde;a que adem&aacute;s reparte cartas:<br>
+<code>response_schema: { "casino_name": "...", "head_dealer": "...", "poker_variants": ["..."], "dress_code": null }</code></div>
       <h3>Respuesta</h3>
       <pre><code>{
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -815,6 +844,7 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
           <tr><td><code>LLM_AUTH_ERROR</code></td><td>API key inv&aacute;lida o sin cr&eacute;ditos</td><td>null</td><td>No reintentar; corregir config</td></tr>
           <tr><td><code>LLM_PARSE_ERROR</code></td><td>JSON malformado tras 2 reintentos</td><td>60 s</td><td>Puede reintentar</td></tr>
           <tr><td><code>JOB_TIMEOUT</code></td><td>Job super&oacute; el timeout global de 30 minutos</td><td>600 s</td><td>Reintentar con <code>max_pages</code> menor</td></tr>
+          <tr><td><code>RESULT_SCHEMA_MISMATCH</code></td><td>El resultado del LLM no respeta la estructura de <code>response_schema</code></td><td>60 s</td><td>Revisar <code>response_schema</code> o reintentar</td></tr>
           <tr><td><code>INTERNAL_ERROR</code></td><td>Error inesperado del servidor</td><td>60 s</td><td>Reportar al administrador</td></tr>
         </tbody>
       </table></div>
@@ -852,7 +882,15 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
       <pre><code>curl -X POST https://scraper.azanolabs.com/api/v1/scrape \\
   -H "X-API-Key: tu-clave" \\
   -H "Content-Type: application/json" \\
-  -d '{"url": "https://example-dealer.com"}'</code></pre>
+  -d '{
+    "url": "https://example-dealer.com",
+    "response_schema": {
+      "business_name": "...",
+      "phone": null,
+      "services": ["..."],
+      "address": "..."
+    }
+  }'</code></pre>
 
       <h3>Crear un job con descarga de im&aacute;genes</h3>
       <pre><code>curl -X POST https://scraper.azanolabs.com/api/v1/scrape \\
@@ -860,6 +898,11 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://example-dealer.com",
+    "response_schema": {
+      "business_name": "...",
+      "phone": null,
+      "services": ["..."]
+    },
     "options": {
       "download_images": true,
       "max_pages": 20
@@ -893,9 +936,18 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
   -H "X-API-Key: tu-clave"</code></pre>
 
       <h3>Loop de polling completo (bash)</h3>
-      <pre><code>JOB_ID=$(curl -s -X POST https://scraper.azanolabs.com/api/v1/scrape \\
+      <pre><code># "Eddie el Ocho Patas" reparte cartas y rastrea sitios — ara&ntilde;a de m&uacute;ltiples talentos
+JOB_ID=$(curl -s -X POST https://scraper.azanolabs.com/api/v1/scrape \\
   -H "X-API-Key: tu-clave" -H "Content-Type: application/json" \\
-  -d '{"url":"https://example-dealer.com"}' | jq -r '.job_id')
+  -d '{
+    "url": "https://example-dealer.com",
+    "response_schema": {
+      "casino_name": "...",
+      "head_dealer": "...",
+      "poker_variants": ["..."],
+      "dress_code": null
+    }
+  }' | jq -r '.job_id')
 
 while true; do
   STATUS=$(curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/status" \\

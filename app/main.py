@@ -190,6 +190,12 @@ async def guide_ai() -> Any:
                 "description": "Crea un nuevo job de scraping. Devuelve job_id y status='queued'.",
                 "body": {
                     "url": "URL del sitio a scrapear (string, requerido)",
+                    "response_schema": (
+                        "object — requerido. JSON de muestra que define la estructura exacta "
+                        "que el cliente espera recibir. "
+                        "El LLM llenará EXACTAMENTE esas claves. "
+                        "Ejemplo: {\"business_name\": \"...\", \"phone\": null, \"brands\": [\"...\"]}"
+                    ),
                     "options": {
                         "max_pages": "int | null — máximo de páginas (default: 50)",
                         "download_images": "bool | null — descargar imágenes (default: false)",
@@ -305,6 +311,11 @@ async def guide_ai() -> Any:
                 "cause": "Error inesperado del servidor.",
                 "retry_after": 60,
                 "action": "Reportar al administrador.",
+            },
+            "RESULT_SCHEMA_MISMATCH": {
+                "cause": "El resultado del LLM no respeta la estructura de response_schema.",
+                "retry_after": 60,
+                "action": "Revisar el response_schema o reintentar.",
             },
         },
         "ttl_note": (

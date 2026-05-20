@@ -11,6 +11,10 @@ Covers:
   - activity_event.set() called ≥5 times during a run
   - Job already failed before LLM call → returns False without calling LLM
   - chunk_summaries/ cleaned up after successful run
+  - response_schema: custom schema used in prompts, result stored under "data"
+  - response_schema: validation passes when LLM output matches schema
+  - response_schema: validation fails → job fails with RESULT_SCHEMA_MISMATCH
+  - _validate_schema_structure unit tests (dict, list, nested, missing key)
 """
 
 import asyncio
@@ -27,7 +31,13 @@ import respx
 
 from app.core.job_manager import job_manager
 from app.models.job import JobStatus
-from app.pipeline.reviewer import LLMAuthError, LLMClient, LLMParseError, run_reviewer
+from app.pipeline.reviewer import (
+    LLMAuthError,
+    LLMClient,
+    LLMParseError,
+    _validate_schema_structure,
+    run_reviewer,
+)
 
 # ── Force pytest-asyncio to auto mode for all tests in this module ──────────
 pytestmark = pytest.mark.asyncio
@@ -75,6 +85,22 @@ MOCK_MERGE_RESPONSE: dict = {
     "main_topics": ["cars"],
     "key_pages": [],
     "images": [{"src": "https://example.com/img.jpg", "alt": "img"}],
+}
+
+# Default schema used in _make_job_with_pages — must match MOCK_MERGE_RESPONSE's structure
+# so that schema validation passes in tests that use the standard mock responses.
+DEFAULT_TEST_SCHEMA: dict = {
+    "business_name": "...",
+    "business_type": "...",
+    "description": "...",
+    "language": "...",
+    "address": None,
+    "phone": None,
+    "email": None,
+    "social_links": [],
+    "main_topics": ["..."],
+    "key_pages": [],
+    "images": [{"src": "...", "alt": "..."}],
 }
 
 
@@ -171,7 +197,7 @@ def _make_job_with_pages(n_pages: int = 1, status: str = "auditing") -> str:
         "job_id": job_id,
         "status": status,
         "url": "https://example.com",
-        "options": {},
+        "options": {"response_schema": DEFAULT_TEST_SCHEMA},
         "progress": {
             "phase": "auditing",
             "pages_done": n_pages,
@@ -236,9 +262,12 @@ async def test_reviewer_success_openai() -> None:
 
     data = json.loads(result_path.read_text(encoding="utf-8"))
     assert data["job_id"] == job_id
-    assert data["business"]["name"] == "Test Dealer"
-    assert data["business"]["type"] == "car_dealer"
-    assert "assets" in data
+    assert data["schema_validated"] is True
+    assert "data" in data
+    assert data["data"]["business_name"] == "Test Dealer"
+    assert data["data"]["business_type"] == "car_dealer"
+    assert "business" not in data
+    assert "assets" not in data
     assert "metadata" in data
     assert data["metadata"]["pages_analyzed"] == 1
 
@@ -281,7 +310,8 @@ async def test_reviewer_success_anthropic() -> None:
     assert result_path.exists()
     data = json.loads(result_path.read_text(encoding="utf-8"))
     assert data["llm_provider"] == "anthropic"
-    assert data["business"]["name"] == "Test Dealer"
+    assert data["schema_validated"] is True
+    assert data["data"]["business_name"] == "Test Dealer"
 
 
 @respx.mock
@@ -520,3 +550,318 @@ async def test_chunk_summaries_cleaned() -> None:
     assert not chunk_dir.exists(), (
         "chunk_summaries/ should be deleted after a successful run"
     )
+
+
+# ---------------------------------------------------------------------------
+# _validate_schema_structure — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_validate_schema_flat_dict_ok() -> None:
+    """All keys present with compatible types → no errors."""
+    template = {"name": "...", "phone": None, "score": 0}
+    result = {"name": "Dealer X", "phone": "+54911", "score": 5}
+    assert _validate_schema_structure(result, template) == []
+
+
+def test_validate_schema_flat_dict_missing_key() -> None:
+    """Missing key in result → error reported."""
+    template = {"name": "...", "phone": None}
+    result = {"name": "Dealer X"}  # "phone" missing
+    errors = _validate_schema_structure(result, template)
+    assert len(errors) == 1
+    assert "phone" in errors[0]
+    assert "no encontrada" in errors[0]
+
+
+def test_validate_schema_list_ok() -> None:
+    """Result has a list where template has a list → no errors."""
+    template = {"brands": ["..."]}
+    result = {"brands": ["Toyota", "Honda"]}
+    assert _validate_schema_structure(result, template) == []
+
+
+def test_validate_schema_list_got_non_list() -> None:
+    """Result has a string where template has a list → error."""
+    template = {"brands": ["..."]}
+    result = {"brands": "Toyota"}
+    errors = _validate_schema_structure(result, template)
+    assert any("array" in e for e in errors)
+
+
+def test_validate_schema_nested_dict_ok() -> None:
+    """Nested dicts validated recursively → no errors."""
+    template = {"contact": {"phone": None, "email": None}}
+    result = {"contact": {"phone": "123", "email": "a@b.com"}}
+    assert _validate_schema_structure(result, template) == []
+
+
+def test_validate_schema_nested_dict_missing_inner_key() -> None:
+    """Missing key in a nested dict → error with full path."""
+    template = {"contact": {"phone": None, "email": None}}
+    result = {"contact": {"phone": "123"}}  # "email" missing
+    errors = _validate_schema_structure(result, template)
+    assert len(errors) == 1
+    assert "contact.email" in errors[0]
+
+
+def test_validate_schema_wrong_type_dict_for_list() -> None:
+    """Template expects dict, result has a list → error."""
+    template = {"info": {"key": "val"}}
+    result = {"info": ["item1"]}
+    errors = _validate_schema_structure(result, template)
+    assert any("object" in e or "dict" in e for e in errors)
+
+
+def test_validate_schema_null_value_allowed() -> None:
+    """null (None) is accepted for any field regardless of template value."""
+    template = {"name": "...", "brands": ["..."]}
+    result = {"name": None, "brands": None}
+    # "brands" is None instead of list → should report an error
+    errors = _validate_schema_structure(result, template)
+    # "name" being None for a str template: no error (primitives not enforced)
+    # "brands" being None for a list template: IS an error
+    assert any("brands" in e for e in errors)
+
+
+def test_validate_schema_list_item_template() -> None:
+    """Each item in a result list is validated against the first template item."""
+    template = {"items": [{"title": "...", "url": "..."}]}
+    result = {"items": [{"title": "Home", "url": "https://x.com"}, {"title": "About"}]}
+    errors = _validate_schema_structure(result, template)
+    # Second item is missing "url"
+    assert any("url" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# response_schema in run_reviewer
+# ---------------------------------------------------------------------------
+
+CUSTOM_SCHEMA: dict = {
+    "concesionario": "...",
+    "marcas": ["..."],
+    "telefono": None,
+}
+
+# LLM output that conforms to CUSTOM_SCHEMA
+MOCK_SCHEMA_BATCH_RESPONSE: dict = {
+    "concesionario": "Dealer XYZ",
+    "marcas": ["Toyota"],
+    "telefono": "+54911111111",
+}
+
+MOCK_SCHEMA_MERGE_RESPONSE: dict = {
+    "concesionario": "Dealer XYZ",
+    "marcas": ["Toyota", "Honda"],
+    "telefono": "+54911111111",
+}
+
+# LLM output that DOES NOT conform to CUSTOM_SCHEMA (missing "telefono")
+MOCK_SCHEMA_INVALID_RESPONSE: dict = {
+    "concesionario": "Dealer XYZ",
+    "marcas": ["Toyota"],
+    # "telefono" missing
+}
+
+
+def _make_job_with_schema(schema: dict) -> str:
+    """Creates a job with a response_schema in its options."""
+    job_id = str(uuid.uuid4())
+    job_base = Path(os.environ["JOB_BASE_DIR"])
+    job_dir = job_base / job_id
+    (job_dir / "pages").mkdir(parents=True)
+
+    url = "https://example.com/page0"
+    url_hash = hashlib.sha256(url.encode()).hexdigest()
+    page_data = {
+        "url": url,
+        "url_hash": url_hash,
+        "title": "Home",
+        "meta_description": "",
+        "meta_keywords": [],
+        "og_data": {},
+        "canonical_url": "",
+        "language": "es",
+        "headings": {"h1": ["Home"], "h2": [], "h3": []},
+        "text_content": "Contenido de la página. " * 30,
+        "word_count": 90,
+        "internal_links": [],
+        "external_links": [],
+        "images": [],
+        "schema_org": [],
+        "has_forms": False,
+        "has_tables": False,
+        "extracted_at": "2026-05-19T10:00:00Z",
+    }
+    (job_dir / "pages" / f"{url_hash}.json").write_text(
+        json.dumps(page_data), encoding="utf-8"
+    )
+    pages = [{"url": url, "url_hash": url_hash, "valid": True}]
+    audit_report = {
+        "job_id": job_id,
+        "coverage_percent": 100.0,
+        "critical": False,
+        "second_pass": False,
+        "needs_refetch": False,
+        "pages": pages,
+        "total_routes": 1,
+        "pages_fetched": 1,
+    }
+    (job_dir / "audit_report.json").write_text(
+        json.dumps(audit_report), encoding="utf-8"
+    )
+    state = {
+        "job_id": job_id,
+        "status": "auditing",
+        "url": "https://example.com",
+        "options": {"response_schema": schema},
+        "progress": {
+            "phase": "auditing",
+            "pages_done": 1,
+            "pages_total": 1,
+            "percent": 100,
+        },
+        "error": None,
+        "created_at": "2026-05-19T10:00:00Z",
+        "started_at": "2026-05-19T10:00:00Z",
+        "updated_at": "2026-05-19T10:00:00Z",
+        "done_at": None,
+        "ttl_remaining_seconds": None,
+        "estimated_remaining_seconds": 0,
+    }
+    (job_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+    return job_id
+
+
+@respx.mock
+async def test_reviewer_custom_schema_success() -> None:
+    """
+    When response_schema is provided, the result.json contains:
+    - "schema_validated": True
+    - "data": the LLM output (conformant to the schema)
+    - NO legacy "business" / "content" / "assets" keys
+    """
+    job_id = _make_job_with_schema(CUSTOM_SCHEMA)
+
+    call_count = 0
+    responses = [
+        _openai_response(MOCK_SCHEMA_BATCH_RESPONSE),
+        _openai_response(MOCK_SCHEMA_MERGE_RESPONSE),
+    ]
+
+    def _side_effect(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        resp = responses[call_count]
+        call_count += 1
+        return resp
+
+    respx.post(_OPENAI_URL).mock(side_effect=_side_effect)
+
+    activity_event = asyncio.Event()
+    with patch("app.pipeline.reviewer.settings") as mock_settings:
+        mock_settings.LLM_PROVIDER = "openai"
+        mock_settings.LLM_MODEL = "gpt-4o-mini"
+        mock_settings.LLM_API_KEY = "test-key"
+        mock_settings.LLM_MAX_TOKENS = 4000
+        mock_settings.LLM_TEMPERATURE = 0.2
+        mock_settings.JOB_BASE_DIR = os.environ["JOB_BASE_DIR"]
+
+        result = await run_reviewer(job_id, activity_event)
+
+    assert result is True, "run_reviewer should return True on schema-conformant output"
+
+    result_path = Path(os.environ["JOB_BASE_DIR"]) / job_id / "result.json"
+    assert result_path.exists()
+
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    assert data["schema_validated"] is True
+    assert "data" in data
+    assert data["data"]["concesionario"] == "Dealer XYZ"
+    assert "marcas" in data["data"]
+    # Legacy keys must NOT be present
+    assert "business" not in data
+    assert "content" not in data
+    assert "assets" not in data
+    # Metadata must still be present
+    assert "metadata" in data
+
+
+@respx.mock
+async def test_reviewer_custom_schema_validation_fails() -> None:
+    """
+    When the LLM output does not conform to response_schema, the job fails
+    with error code RESULT_SCHEMA_MISMATCH and run_reviewer returns False.
+    """
+    job_id = _make_job_with_schema(CUSTOM_SCHEMA)
+
+    call_count = 0
+    # Both calls return a response missing "telefono"
+    responses = [
+        _openai_response(MOCK_SCHEMA_INVALID_RESPONSE),
+        _openai_response(MOCK_SCHEMA_INVALID_RESPONSE),
+    ]
+
+    def _side_effect(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        resp = responses[call_count]
+        call_count += 1
+        return resp
+
+    respx.post(_OPENAI_URL).mock(side_effect=_side_effect)
+
+    activity_event = asyncio.Event()
+    with patch("app.pipeline.reviewer.settings") as mock_settings:
+        mock_settings.LLM_PROVIDER = "openai"
+        mock_settings.LLM_MODEL = "gpt-4o-mini"
+        mock_settings.LLM_API_KEY = "test-key"
+        mock_settings.LLM_MAX_TOKENS = 4000
+        mock_settings.LLM_TEMPERATURE = 0.2
+        mock_settings.JOB_BASE_DIR = os.environ["JOB_BASE_DIR"]
+
+        result = await run_reviewer(job_id, activity_event)
+
+    assert result is False, "run_reviewer must return False when schema validation fails"
+
+    state = await job_manager.get_state(job_id)
+    assert state is not None
+    assert state.status == JobStatus.failed
+    assert state.error is not None
+    assert state.error.code == "RESULT_SCHEMA_MISMATCH"
+    assert "telefono" in state.error.message
+
+
+@respx.mock
+async def test_reviewer_schema_prompt_contains_schema() -> None:
+    """
+    When response_schema is set, the prompt sent to the LLM must contain
+    the schema keys (not the default fixed structure).
+    """
+    job_id = _make_job_with_schema(CUSTOM_SCHEMA)
+
+    captured_payloads: list[dict] = []
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(json.loads(request.content))
+        return _openai_response(MOCK_SCHEMA_MERGE_RESPONSE)
+
+    respx.post(_OPENAI_URL).mock(side_effect=_capture)
+
+    activity_event = asyncio.Event()
+    with patch("app.pipeline.reviewer.settings") as mock_settings:
+        mock_settings.LLM_PROVIDER = "openai"
+        mock_settings.LLM_MODEL = "gpt-4o-mini"
+        mock_settings.LLM_API_KEY = "test-key"
+        mock_settings.LLM_MAX_TOKENS = 4000
+        mock_settings.LLM_TEMPERATURE = 0.2
+        mock_settings.JOB_BASE_DIR = os.environ["JOB_BASE_DIR"]
+
+        await run_reviewer(job_id, activity_event)
+
+    assert len(captured_payloads) >= 1, "At least one LLM call should have been made"
+    # The user message in the first (batch) call must contain our schema keys
+    first_user_content = captured_payloads[0]["messages"][-1]["content"]
+    assert "concesionario" in first_user_content
+    assert "marcas" in first_user_content
+    assert "telefono" in first_user_content
+    # Default schema keywords must NOT appear in a schema-driven run
+    assert "business_name" not in first_user_content

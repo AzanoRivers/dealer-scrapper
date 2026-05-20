@@ -258,6 +258,62 @@ class LLMClient:
 
 
 # ---------------------------------------------------------------------------
+# Schema validation
+# ---------------------------------------------------------------------------
+
+
+def _validate_schema_structure(
+    result: Any, template: Any, path: str = "root"
+) -> list[str]:
+    """
+    Validates that `result` conforms to the structure defined by `template`.
+
+    Rules:
+    - If template is a dict: result must be a dict containing ALL the same keys.
+      Nested dicts are validated recursively.
+    - If template is a list: result must be a list.
+      If the template list is non-empty, the first item acts as the item template
+      and every element in result is validated against it.
+    - For primitives (str, int, float, bool, None): no type enforcement —
+      the LLM is allowed to return null for any field.
+
+    Returns a list of human-readable error strings. Empty list = valid.
+    """
+    errors: list[str] = []
+
+    if isinstance(template, dict):
+        if not isinstance(result, dict):
+            errors.append(
+                f"{path}: se esperaba un objeto (dict), se obtuvo {type(result).__name__}"
+            )
+            return errors
+        for key, tval in template.items():
+            if key not in result:
+                errors.append(f"{path}.{key}: clave requerida no encontrada en el resultado")
+            else:
+                errors.extend(
+                    _validate_schema_structure(result[key], tval, f"{path}.{key}")
+                )
+
+    elif isinstance(template, list):
+        if not isinstance(result, list):
+            errors.append(
+                f"{path}: se esperaba un array (list), se obtuvo {type(result).__name__}"
+            )
+        elif len(template) > 0 and len(result) > 0:
+            # Use first template item to validate all result items
+            item_template = template[0]
+            for i, item in enumerate(result):
+                errors.extend(
+                    _validate_schema_structure(item, item_template, f"{path}[{i}]")
+                )
+
+    # Primitives: allow any value (including null) — no validation needed
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
 
@@ -268,70 +324,71 @@ BATCH_SYSTEM_PROMPT: str = (
 )
 
 
-def build_batch_prompt(pages_data: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Builds the messages list for a batch of pages."""
-    pages_text: str = "\n\n---\n\n".join(
+def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
+    return "\n\n---\n\n".join(
         [
             f"URL: {p.get('url', '')}\nTítulo: {p.get('title', '')}\nContenido:\n{str(p.get('text_content', ''))[:2000]}"
             for p in pages_data
         ]
     )
+
+
+def build_schema_batch_prompt(
+    pages_data: list[dict[str, Any]],
+    response_schema: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """
+    Builds the messages list for a batch of pages when the client provided a
+    custom response_schema. The LLM is instructed to fill EXACTLY that structure.
+    """
+    pages_text: str = _build_pages_text(pages_data)
+    schema_str: str = json.dumps(response_schema, ensure_ascii=False, indent=2)
     return [
         {"role": "system", "content": BATCH_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                'Analiza estas páginas y devuelve JSON con esta estructura:\n'
-                '{\n'
-                '  "business_name": "nombre del negocio o null",\n'
-                '  "business_type": "tipo de negocio (car_dealer, service, retailer, etc.) o null",\n'
-                '  "description": "descripción del negocio en 1-2 oraciones",\n'
-                '  "language": "código de idioma (es, en, pt, etc.)",\n'
-                '  "key_topics": ["tema1", "tema2"],\n'
-                '  "contact_info": {"phone": null, "email": null, "address": null},\n'
-                '  "pages_summary": [\n'
-                '    {"url": "...", "title": "...", "summary": "...", "key_points": ["..."]}\n'
-                '  ],\n'
-                '  "images": [\n'
-                '    {"src": "url absoluta", "alt": "texto alt"}\n'
-                '  ]\n'
-                '}\n\n'
-                f'Páginas a analizar:\n{pages_text}'
+                "Analiza estas páginas web y extrae la información necesaria para completar "
+                "EXACTAMENTE la siguiente estructura JSON.\n\n"
+                "REGLAS ESTRICTAS:\n"
+                "- Devuelve ÚNICAMENTE el JSON, sin texto adicional ni explicaciones.\n"
+                "- Mantén EXACTAMENTE las mismas claves y la misma estructura anidada.\n"
+                "- Usa null para campos sin información disponible en las páginas.\n"
+                "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
+                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n\n"
+                f"Estructura requerida:\n{schema_str}\n\n"
+                f"Páginas a analizar:\n{pages_text}"
             ),
         },
     ]
 
 
-def build_merge_prompt(
-    chunk_summaries: list[dict[str, Any]], base_url: str
+def build_schema_merge_prompt(
+    chunk_summaries: list[dict[str, Any]],
+    base_url: str,
+    response_schema: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Builds the messages list for the merge/consolidation call."""
+    """
+    Builds the merge/consolidation prompt when the client provided a custom
+    response_schema. The LLM must consolidate into EXACTLY that structure.
+    """
     summaries_text: str = json.dumps(chunk_summaries, ensure_ascii=False, indent=2)
+    schema_str: str = json.dumps(response_schema, ensure_ascii=False, indent=2)
     return [
         {"role": "system", "content": BATCH_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                "Consolida estos análisis parciales en un único resultado JSON completo.\n"
+                "Consolida estos análisis parciales en un único resultado que cumpla "
+                "EXACTAMENTE la siguiente estructura JSON.\n\n"
+                "REGLAS ESTRICTAS:\n"
+                "- Devuelve ÚNICAMENTE el JSON, sin texto adicional.\n"
+                "- Mantén EXACTAMENTE las mismas claves y la misma estructura anidada.\n"
+                "- Usa null para campos sin información disponible.\n"
+                "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
+                "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n\n"
+                f"Estructura requerida:\n{schema_str}\n\n"
                 f"URL base del sitio: {base_url}\n\n"
-                "Devuelve JSON con esta estructura exacta:\n"
-                "{\n"
-                '  "business_name": "...",\n'
-                '  "business_type": "...",\n'
-                '  "description": "...",\n'
-                '  "language": "...",\n'
-                '  "address": null,\n'
-                '  "phone": null,\n'
-                '  "email": null,\n'
-                '  "social_links": [],\n'
-                '  "main_topics": ["..."],\n'
-                '  "key_pages": [\n'
-                '    {"url": "...", "title": "...", "summary": "...", "key_points": ["..."]}\n'
-                "  ],\n"
-                '  "images": [\n'
-                '    {"src": "...", "alt": "...", "local_path": null, "width": null, "height": null}\n'
-                "  ]\n"
-                "}\n\n"
                 f"Análisis parciales:\n{summaries_text}"
             ),
         },
@@ -398,26 +455,16 @@ def _build_result_json(
     provider: str,
     model: str,
 ) -> dict[str, Any]:
-    """Assembles the final result.json from LLM merged data + job metadata."""
+    """Assembles the final result.json from LLM merged data + job metadata.
+
+    The LLM output is stored verbatim under the "data" key.
+    "schema_validated" is always True — every job now requires a response_schema.
+    """
     # Coverage metadata — handle both auditor formats
     coverage_data = audit_report.get("coverage", {})
     total_routes: int = coverage_data.get("total_routes") or audit_report.get("total_routes", valid_page_count)
     pages_fetched: int = coverage_data.get("extracted_pages") or audit_report.get("pages_fetched", valid_page_count)
     coverage_percent: float = coverage_data.get("coverage_percent") or audit_report.get("coverage_percent", 100.0)
-
-    images_raw: list[dict[str, Any]] = merged.get("images", [])
-    images: list[dict[str, Any]] = [
-        {
-            "src": img.get("src", ""),
-            "alt": img.get("alt", ""),
-            "local_path": None,
-            "width": None,
-            "height": None,
-        }
-        for img in images_raw
-    ]
-
-    key_pages_raw: list[dict[str, Any]] = merged.get("key_pages", [])
 
     return {
         "job_id": job_id,
@@ -425,29 +472,14 @@ def _build_result_json(
         "scraped_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "llm_provider": provider,
         "llm_model": model,
-        "business": {
-            "name": merged.get("business_name"),
-            "type": merged.get("business_type"),
-            "description": merged.get("description"),
-            "language": merged.get("language"),
-            "address": merged.get("address"),
-            "phone": merged.get("phone"),
-            "email": merged.get("email"),
-            "social_links": merged.get("social_links", []),
-        },
-        "content": {
-            "main_topics": merged.get("main_topics", []),
-            "key_pages": key_pages_raw,
-        },
-        "assets": {
-            "images": images,
-        },
+        "schema_validated": True,
         "metadata": {
             "total_pages_discovered": total_routes,
             "pages_fetched": pages_fetched,
             "pages_analyzed": valid_page_count,
             "coverage_percent": coverage_percent,
         },
+        "data": merged,
     }
 
 
@@ -502,6 +534,10 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     """
     Analyzes extracted pages with an LLM and writes result.json.
     Expects audit_report.json and pages/*.json to be present.
+
+    If the job's options contain a "response_schema" key, the LLM is instructed
+    to fill that exact structure and the result is strictly validated against it
+    before writing to disk.  A mismatch fails the job with RESULT_SCHEMA_MISMATCH.
 
     Calls activity_event.set() at minimum 5 points per batch (plus merge points).
     Guard 2 (llm_watchdog) is managed by the caller (run_pipeline in guards.py).
@@ -563,6 +599,19 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     model: str = (
         (state.options.get("llm_model") or "") or settings.LLM_MODEL
     )
+    # response_schema is mandatory — every job must provide it.
+    response_schema: Optional[dict[str, Any]] = state.options.get("response_schema")
+    if response_schema is None:
+        logger.error(
+            "Reviewer: response_schema missing from job options for job %s", job_id
+        )
+        await job_manager.fail_job(
+            job_id,
+            "INTERNAL_ERROR",
+            "response_schema no encontrado en las opciones del job.",
+        )
+        return False
+
     client = LLMClient(provider, model, settings.LLM_API_KEY)
 
     # 4. Create chunk_summaries/ directory
@@ -594,9 +643,12 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             activity_event.set()
             continue
 
+        # Build schema-aware prompt
+        batch_messages = build_schema_batch_prompt(pages_data, response_schema)
+
         try:
             raw_response: str = await client.complete(
-                build_batch_prompt(pages_data),
+                batch_messages,
                 max_tokens=settings.LLM_MAX_TOKENS,
                 temperature=settings.LLM_TEMPERATURE,
             )
@@ -652,23 +704,16 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
 
     # If no chunks (no valid pages), create a minimal merged result
     if not chunk_summaries:
-        merged: dict[str, Any] = {
-            "business_name": None,
-            "business_type": None,
-            "description": None,
-            "language": None,
-            "address": None,
-            "phone": None,
-            "email": None,
-            "social_links": [],
-            "main_topics": [],
-            "key_pages": [],
-            "images": [],
-        }
+        merged: dict[str, Any] = {k: None for k in response_schema}
     else:
+        # Build schema-aware merge prompt
+        merge_messages = build_schema_merge_prompt(
+            chunk_summaries, job_url, response_schema
+        )
+
         try:
             merged_raw: str = await client.complete(
-                build_merge_prompt(chunk_summaries, job_url),
+                merge_messages,
                 max_tokens=settings.LLM_MAX_TOKENS,
                 temperature=settings.LLM_TEMPERATURE,
             )
@@ -702,6 +747,23 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
                 retry_after=60,
             )
             return False
+
+    # 6b. Strict schema validation
+    schema_errors = _validate_schema_structure(merged, response_schema)
+    if schema_errors:
+        errors_summary = "; ".join(schema_errors[:5])  # cap at 5 for message length
+        logger.error(
+            "Reviewer: schema validation failed for job %s — %s",
+            job_id,
+            errors_summary,
+        )
+        await job_manager.fail_job(
+            job_id,
+            "RESULT_SCHEMA_MISMATCH",
+            f"El resultado del LLM no respeta la estructura solicitada. "
+            f"Errores: {errors_summary}",
+        )
+        return False
 
     # 7. Build and write result.json
     result: dict[str, Any] = _build_result_json(

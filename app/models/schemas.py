@@ -1,5 +1,5 @@
-from typing import Optional, Any
-from pydantic import BaseModel, HttpUrl
+from typing import Any, Dict, Optional
+from pydantic import BaseModel, HttpUrl, field_validator
 
 
 class ScrapeOptions(BaseModel):
@@ -11,7 +11,24 @@ class ScrapeOptions(BaseModel):
 
 class ScrapeRequest(BaseModel):
     url: HttpUrl
+    # JSON de muestra que define la estructura exacta que el cliente espera recibir.
+    # El LLM usará esta plantilla como guía y el código validará que el resultado
+    # la respete estrictamente (claves presentes, tipos compatibles).
+    # Ejemplo: {"concesionario": "...", "marcas": ["..."], "telefono": null}
+    # Obligatorio — se retorna 422 si no se envía o si es un objeto vacío {}.
+    response_schema: Dict[str, Any]
     options: ScrapeOptions = ScrapeOptions()
+
+    @field_validator("response_schema")
+    @classmethod
+    def validate_response_schema(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """El schema debe ser un objeto JSON (dict) no vacío."""
+        if len(v) == 0:
+            raise ValueError(
+                "response_schema no puede ser un objeto vacío. "
+                "Provee al menos una clave que defina la estructura esperada."
+            )
+        return v
 
 
 class ScrapeResponse(BaseModel):

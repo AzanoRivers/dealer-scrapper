@@ -87,7 +87,9 @@ async def create_scrape_job(
     request: ScrapeRequest,
     api_key: str = Depends(verify_api_key),
 ) -> ScrapeResponse:
-    options: dict[str, Any] = {}
+    options: dict[str, Any] = {
+        "response_schema": request.response_schema,
+    }
     if request.options.max_pages is not None:
         options["max_pages"] = request.options.max_pages
     if request.options.download_images is not None:

@@ -16,6 +16,8 @@ from fastapi.testclient import TestClient
 
 TEST_API_KEY = "test-key-12345678901234567890123456"
 VALID_URL = "https://example.com"
+# Minimal response_schema used in all POST /api/v1/scrape requests (required field).
+MINIMAL_SCHEMA = {"title": "...", "description": "..."}
 
 
 # ===========================================================================
@@ -38,7 +40,7 @@ class TestPostScrape:
     def test_creates_job_with_uuid_v4(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         assert resp.status_code == 201, resp.text
@@ -52,7 +54,7 @@ class TestPostScrape:
     def test_job_directory_created_on_disk(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         assert resp.status_code == 201
@@ -64,7 +66,7 @@ class TestPostScrape:
     def test_state_json_has_correct_fields(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {"max_pages": 10}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {"max_pages": 10}},
             headers=api_headers,
         )
         assert resp.status_code == 201
@@ -78,6 +80,24 @@ class TestPostScrape:
         assert "created_at" in state
         assert "updated_at" in state
 
+    def test_missing_response_schema_returns_422(self, client: TestClient, api_headers: dict) -> None:
+        """POST without response_schema must return 422 (required field)."""
+        resp = client.post(
+            "/api/v1/scrape",
+            json={"url": VALID_URL, "options": {}},
+            headers=api_headers,
+        )
+        assert resp.status_code == 422, resp.text
+
+    def test_empty_response_schema_returns_422(self, client: TestClient, api_headers: dict) -> None:
+        """POST with response_schema={} (empty object) must return 422."""
+        resp = client.post(
+            "/api/v1/scrape",
+            json={"url": VALID_URL, "response_schema": {}, "options": {}},
+            headers=api_headers,
+        )
+        assert resp.status_code == 422, resp.text
+
 
 # ===========================================================================
 # Checkpoint 2: GET /status devuelve schema correcto incluyendo ttl_remaining_seconds
@@ -87,7 +107,7 @@ class TestGetJobStatus:
     def test_status_schema_in_queued_state(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
@@ -108,7 +128,7 @@ class TestGetJobStatus:
     def test_ttl_is_null_when_not_terminal(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
@@ -228,7 +248,7 @@ class TestGetResult:
     def test_result_returns_425_when_not_done(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
@@ -255,7 +275,7 @@ class TestGetImages:
     ) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
@@ -275,7 +295,7 @@ class TestDeleteJob:
     def test_delete_removes_directory(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
@@ -293,7 +313,7 @@ class TestDeleteJob:
     def test_status_returns_404_after_delete(self, client: TestClient, api_headers: dict) -> None:
         resp = client.post(
             "/api/v1/scrape",
-            json={"url": VALID_URL, "options": {}},
+            json={"url": VALID_URL, "response_schema": MINIMAL_SCHEMA, "options": {}},
             headers=api_headers,
         )
         job_id = resp.json()["job_id"]
