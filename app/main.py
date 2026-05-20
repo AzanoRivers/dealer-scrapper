@@ -74,9 +74,9 @@ async def startup_cleanup() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    app.state.started_at = datetime.now(timezone.utc)
     await startup_cleanup()
     yield
-    # No shutdown tasks in F01
 
 
 # ---------------------------------------------------------------------------
@@ -122,13 +122,19 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 # ---------------------------------------------------------------------------
 
 @app.get("/", summary="Info del servidor")
-async def root() -> Any:
+async def root(request: Request) -> Any:
+    delta = datetime.now(timezone.utc) - request.app.state.started_at
+    total_seconds = int(delta.total_seconds())
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
     return {
         "name": settings.PROJECT_NAME,
         "version": settings.API_VERSION,
+        "author": "AzanoRivers",
         "status": "ok",
-        "port": 8002,
-        "docs": "/docs" if settings.DEBUG else "disabled (set DEBUG=true to enable)",
+        "uptime": f"{days}d {hours}h {minutes}m {seconds}s",
+        "uptime_seconds": total_seconds,
     }
 
 
