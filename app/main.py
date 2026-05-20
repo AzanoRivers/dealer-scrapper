@@ -181,8 +181,8 @@ async def guide_ai() -> Any:
                     "options": {
                         "max_pages": "int | null — máximo de páginas (default: 50)",
                         "download_images": "bool | null — descargar imágenes (default: false)",
-                        "llm_provider": "string | null — override del provider LLM",
-                        "llm_model": "string | null — override del modelo LLM",
+                        "llm_provider": "string | null — override del provider LLM: nvidia, openai, anthropic, deepseek, minimax",
+                        "llm_model": "string | null — override del modelo LLM (ej. moonshotai/kimi-k2.6, gpt-4o)",
                     },
                 },
             },

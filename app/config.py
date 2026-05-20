@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["*"]
 
     # === LLM Provider ===
-    LLM_PROVIDER: str = "openai"
-    LLM_MODEL: str = "gpt-4o-mini"
+    LLM_PROVIDER: str = "nvidia"
+    LLM_MODEL: str = "moonshotai/kimi-k2.6"
     LLM_API_KEY: str = ""
     LLM_MAX_TOKENS: int = 4000
     LLM_TEMPERATURE: float = 0.2

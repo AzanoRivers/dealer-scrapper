@@ -45,6 +45,7 @@ class LLMParseError(Exception):
 
 _PROVIDER_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1/chat/completions",
+    "nvidia": "https://integrate.api.nvidia.com/v1/chat/completions",
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "minimax": "https://api.minimax.chat/v1/text/chatcompletion_v2",
@@ -58,8 +59,8 @@ _PROVIDER_URLS: dict[str, str] = {
 
 class LLMClient:
     """
-    Async wrapper over httpx for 4 LLM providers.
-    Supports: openai, deepseek, anthropic, minimax.
+    Async wrapper over httpx for 5 LLM providers.
+    Supports: openai, nvidia, deepseek, anthropic, minimax.
     """
 
     def __init__(self, provider: str, model: str, api_key: str) -> None:
@@ -111,9 +112,12 @@ class LLMClient:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        # openai and deepseek support response_format; minimax does not
-        if self.provider in ("openai", "deepseek"):
+        # openai, nvidia, deepseek support response_format; minimax does not
+        if self.provider in ("openai", "nvidia", "deepseek"):
             payload["response_format"] = {"type": "json_object"}
+        # nvidia/kimi has reasoning on by default — disable to avoid <think> tags breaking JSON parse
+        if self.provider == "nvidia":
+            payload["chat_template_kwargs"] = {"thinking": False}
         return payload
 
     def _extract_content(self, response_json: dict[str, Any]) -> str:
@@ -148,7 +152,12 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        # nvidia can be slow to start — give it more read time before declaring timeout
+        if self.provider == "nvidia":
+            timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
+        else:
+            timeout = httpx.Timeout(60.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(self._url, json=payload, headers=headers)
 
         if response.status_code in (401, 403):
@@ -186,6 +195,15 @@ class LLMClient:
 
         except httpx.TimeoutException:
             logger.warning("LLM request timed out (provider=%s)", self.provider)
+            if self.provider == "nvidia":
+                logger.warning("Nvidia NIM timeout — retrying once in 10s")
+                await asyncio.sleep(10)
+                try:
+                    return await self._do_request(messages, max_tokens, temperature)
+                except httpx.TimeoutException as exc:
+                    raise LLMParseError(
+                        "Nvidia NIM no responde — modelo ocupado o sin capacidad disponible"
+                    ) from exc
             return ""
 
         except LLMAuthError:

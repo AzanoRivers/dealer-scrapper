@@ -353,3 +353,5 @@ build.log
 #**/.github/
 #.agents/
 #**/.agents/
+settings.local.json
+**/settings.local.json

@@ -398,8 +398,8 @@ _GUIDE_HTML = """<!DOCTYPE html>
           <tr><td><code>url</code></td><td>string (URL)</td><td>Yes</td><td>&middot;</td><td>The website to scrape. Must be a valid HTTP/HTTPS URL.</td></tr>
           <tr><td><code>options.max_pages</code></td><td>integer</td><td>No</td><td>50</td><td>Maximum pages to crawl. Useful to limit cost and runtime for large sites.</td></tr>
           <tr><td><code>options.download_images</code></td><td>boolean</td><td>No</td><td>false</td><td>If true, images found in <code>result.json</code> are downloaded locally and included in the ZIP. Enables the <code>/images</code> endpoint.</td></tr>
-          <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>server default</td><td>Override LLM provider: <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
-          <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>server default</td><td>Override specific model name (e.g. <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
+          <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>server default</td><td>Override LLM provider: <code>nvidia</code>, <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
+          <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>server default</td><td>Override specific model name (e.g. <code>moonshotai/kimi-k2.6</code>, <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
         </tbody>
       </table></div>
       <h3>Response</h3>
@@ -742,8 +742,8 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
           <tr><td><code>url</code></td><td>string (URL)</td><td>S&iacute;</td><td>&middot;</td><td>El sitio web a scrapear. Debe ser una URL HTTP/HTTPS v&aacute;lida.</td></tr>
           <tr><td><code>options.max_pages</code></td><td>entero</td><td>No</td><td>50</td><td>M&aacute;ximo de p&aacute;ginas a rastrear. &Uacute;til para limitar costo y tiempo en sitios grandes.</td></tr>
           <tr><td><code>options.download_images</code></td><td>boolean</td><td>No</td><td>false</td><td>Si true, las im&aacute;genes del <code>result.json</code> se descargan localmente y se incluyen en el ZIP. Habilita el endpoint <code>/images</code>.</td></tr>
-          <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del provider LLM: <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
-          <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del nombre de modelo (ej. <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
+          <tr><td><code>options.llm_provider</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del provider LLM: <code>nvidia</code>, <code>openai</code>, <code>anthropic</code>, <code>deepseek</code>, <code>minimax</code>.</td></tr>
+          <tr><td><code>options.llm_model</code></td><td>string</td><td>No</td><td>default del servidor</td><td>Override del nombre de modelo (ej. <code>moonshotai/kimi-k2.6</code>, <code>gpt-4o</code>, <code>claude-3-5-haiku-20241022</code>).</td></tr>
         </tbody>
       </table></div>
       <h3>Respuesta</h3>
