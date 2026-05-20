@@ -340,12 +340,53 @@ BATCH_SYSTEM_PROMPT: str = (
 
 
 def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
-    return "\n\n---\n\n".join(
-        [
-            f"URL: {p.get('url', '')}\nTítulo: {p.get('title', '')}\nContenido:\n{str(p.get('text_content', ''))[:2000]}"
-            for p in pages_data
-        ]
-    )
+    """
+    Build the text representation of a batch of pages for the LLM prompt.
+
+    For JS-rendered SPAs the raw text_content is often near-empty.
+    We complement it with meta tags, headings, Open Graph data, and
+    schema.org structured data so the LLM has enough signal to work with.
+    """
+    parts: list[str] = []
+    for p in pages_data:
+        text: str = str(p.get("text_content", "") or "").strip()
+        meta_desc: str = str(p.get("meta_description", "") or "").strip()
+        # headings is {"h1": [...], "h2": [...], "h3": [...]}
+        headings_raw: Any = p.get("headings", {}) or {}
+        headings: list[str] = []
+        if isinstance(headings_raw, dict):
+            for level in ("h1", "h2", "h3"):
+                headings.extend(str(h) for h in headings_raw.get(level, []) if h)
+        og: dict[str, Any] = p.get("og_data", {}) or {}
+        schema: list[Any] = p.get("schema_org", []) or []
+
+        section = f"URL: {p.get('url', '')}\nTítulo: {p.get('title', '')}"
+
+        if meta_desc:
+            section += f"\nMeta descripción: {meta_desc}"
+
+        if headings:
+            headings_str = " | ".join(headings[:30])
+            section += f"\nEncabezados: {headings_str}"
+
+        if og:
+            og_parts = [f"{k}: {v}" for k, v in og.items() if v]
+            if og_parts:
+                section += f"\nOpen Graph: {', '.join(og_parts)[:600]}"
+
+        if schema:
+            try:
+                schema_str = json.dumps(schema, ensure_ascii=False)[:1200]
+                section += f"\nEsquema estructurado (JSON-LD): {schema_str}"
+            except Exception:
+                pass
+
+        if text:
+            section += f"\nContenido:\n{text[:2000]}"
+
+        parts.append(section)
+
+    return "\n\n---\n\n".join(parts)
 
 
 def build_schema_batch_prompt(
