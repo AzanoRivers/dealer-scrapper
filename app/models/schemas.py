@@ -7,6 +7,7 @@ class ScrapeOptions(BaseModel):
     download_images: Optional[bool] = None
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    max_tokens: Optional[int] = None
 
 
 class ScrapeRequest(BaseModel):

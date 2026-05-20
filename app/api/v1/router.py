@@ -98,6 +98,8 @@ async def create_scrape_job(
         options["llm_provider"] = request.options.llm_provider
     if request.options.llm_model is not None:
         options["llm_model"] = request.options.llm_model
+    if request.options.max_tokens is not None:
+        options["max_tokens"] = request.options.max_tokens
 
     job_id = await job_manager.create_job(url=str(request.url), options=options)
 
