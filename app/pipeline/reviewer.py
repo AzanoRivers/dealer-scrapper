@@ -622,6 +622,10 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     chunk_summaries: list[dict[str, Any]] = []
     batches = _batches_of(valid_hashes, 5)
 
+    # total_steps = number of batch LLM calls + 1 merge call
+    total_steps: int = len(batches) + 1
+    await job_manager.update_progress(job_id, 0, total_steps)
+
     for i, batch_hashes in enumerate(batches):
         # Check if job was cancelled/failed before this batch
         state = await job_manager.get_state(job_id)
@@ -692,6 +696,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         chunk_summaries.append(chunk)
 
         activity_event.set()  # Point 3: chunk saved
+        await job_manager.update_progress(job_id, i + 1, total_steps)
 
     # 6. Merge call — consolidate all chunks
     state = await job_manager.get_state(job_id)
@@ -782,6 +787,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     )
 
     activity_event.set()  # Point 5: result written
+    await job_manager.update_progress(job_id, total_steps, total_steps)
 
     # 8. Clean up chunk_summaries/
     shutil.rmtree(chunk_dir, ignore_errors=True)

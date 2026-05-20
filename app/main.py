@@ -323,6 +323,27 @@ async def guide_ai() -> Any:
             "Usar ttl_remaining_seconds del endpoint /status para saber cuánto tiempo queda."
         ),
         "polling_recommendation": "Polling cada 5-10 segundos. No más frecuente.",
+        "progress_ranges": {
+            "description": (
+                "El campo progress.percent refleja el progreso global 0→100% a través del pipeline completo. "
+                "Cada fase ocupa un rango fijo, permitiendo una barra de progreso suave y predecible."
+            ),
+            "phases": {
+                "queued":     {"start": 0,   "end": 0},
+                "exploring":  {"start": 0,   "end": 8},
+                "fetching":   {"start": 8,   "end": 25},
+                "extracting": {"start": 25,  "end": 35},
+                "auditing":   {"start": 35,  "end": 40},
+                "analyzing":  {"start": 40,  "end": 92},
+                "packaging":  {"start": 92,  "end": 99},
+                "done":       {"start": 100, "end": 100},
+            },
+            "note": (
+                "La fase 'analyzing' ocupa la mayor parte (40-92%) porque el LLM procesa "
+                "por lotes: cada lote actualiza el progreso gradualmente (40→66→...→92%). "
+                "complete_job() fuerza percent=100 al llegar a done."
+            ),
+        },
     }
 
 

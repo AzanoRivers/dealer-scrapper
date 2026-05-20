@@ -128,6 +128,7 @@ async def run_packager(job_id: str) -> bool:
 
     # 1. Update status to packaging
     await job_manager.update_status(job_id, JobStatus.packaging)
+    await job_manager.update_progress(job_id, 0, 1)
 
     job_dir = Path(settings.JOB_BASE_DIR) / job_id
     result_path = job_dir / "result.json"

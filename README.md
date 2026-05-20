@@ -136,6 +136,23 @@ Three background guards protect every job:
 - **Guard 2**: 5-minute LLM inactivity watchdog (only during `analyzing`)
 - **Guard 3**: 15-minute TTL cleanup after `done` / `failed`
 
+#### Progress Ranges (`progress.percent`)
+
+`percent` is a global 0→100% bar across the full pipeline:
+
+| Phase | Start % | End % |
+|-------|---------|-------|
+| `queued` | 0 | 0 |
+| `exploring` | 0 | 8 |
+| `fetching` | 8 | 25 |
+| `extracting` | 25 | 35 |
+| `auditing` | 35 | 40 |
+| `analyzing` | 40 | 92 |
+| `packaging` | 92 | 99 |
+| `done` | 100 | 100 |
+
+The `analyzing` phase holds the largest slice (40–92%) since the LLM processes pages in batches — each batch call advances the bar incrementally. `complete_job()` forces `percent=100` on reaching `done`.
+
 ### Deploy to VPS
 
 ```bash
@@ -283,6 +300,23 @@ Tres guards corren en paralelo protegiendo cada job:
 - **Guard 1**: timeout global de 30 minutos
 - **Guard 2**: watchdog de inactividad LLM de 5 minutos (solo durante `analyzing`)
 - **Guard 3**: cleanup TTL de 15 minutos tras `done` / `failed`
+
+#### Rangos de Progreso (`progress.percent`)
+
+`percent` es una barra global 0→100% a través del pipeline completo:
+
+| Fase | Inicio % | Fin % |
+|------|---------|-------|
+| `queued` | 0 | 0 |
+| `exploring` | 0 | 8 |
+| `fetching` | 8 | 25 |
+| `extracting` | 25 | 35 |
+| `auditing` | 35 | 40 |
+| `analyzing` | 40 | 92 |
+| `packaging` | 92 | 99 |
+| `done` | 100 | 100 |
+
+La fase `analyzing` ocupa la mayor porción (40–92%) ya que el LLM procesa páginas en lotes — cada llamada de lote avanza la barra incrementalmente. `complete_job()` fuerza `percent=100` al llegar a `done`.
 
 ### Deploy al VPS
 

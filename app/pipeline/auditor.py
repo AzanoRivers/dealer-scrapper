@@ -54,6 +54,7 @@ async def run_auditor(job_id: str, second_pass: bool = False) -> bool:
     Returns False if the job was failed (AUDIT_CRITICAL_GAPS).
     """
     await job_manager.update_status(job_id, JobStatus.auditing)
+    await job_manager.update_progress(job_id, 0, 1)
 
     job_dir = Path(settings.JOB_BASE_DIR) / job_id
     routes_path = job_dir / "routes.json"
@@ -245,6 +246,7 @@ async def run_auditor(job_id: str, second_pass: bool = False) -> bool:
         )
         return False
 
+    await job_manager.update_progress(job_id, 1, 1)
     return True
 
 

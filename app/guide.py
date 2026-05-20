@@ -293,6 +293,21 @@ _GUIDE_HTML = """<!DOCTYPE html>
         <li><strong>Packager</strong>: downloads images (optional), creates <code>result.zip</code>, cleans temp files</li>
       </ul>
       <div class="note">Three guards run in parallel: Guard 1 (30 min global timeout), Guard 2 (5 min LLM inactivity watchdog), Guard 3 (15 min TTL cleanup after terminal state).</div>
+      <h3>Progress Ranges</h3>
+      <p>The <code>progress.percent</code> field maps to a global 0→100% bar across all pipeline phases:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Phase</th><th>Start %</th><th>End %</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>queued</code></td><td>0</td><td>0</td><td>Waiting to start</td></tr>
+          <tr><td><code>exploring</code></td><td>0</td><td>8</td><td>Route discovery</td></tr>
+          <tr><td><code>fetching</code></td><td>8</td><td>25</td><td>Per-page updates</td></tr>
+          <tr><td><code>extracting</code></td><td>25</td><td>35</td><td>Per-page updates</td></tr>
+          <tr><td><code>auditing</code></td><td>35</td><td>40</td><td>Coverage check</td></tr>
+          <tr><td><code>analyzing</code></td><td>40</td><td>92</td><td>Per-batch LLM updates</td></tr>
+          <tr><td><code>packaging</code></td><td>92</td><td>99</td><td>ZIP &amp; cleanup</td></tr>
+          <tr><td><code>done</code></td><td>100</td><td>100</td><td>Forced by complete_job()</td></tr>
+        </tbody>
+      </table></div>
     </section>
 
     <section id="en-endpoints">
@@ -663,6 +678,21 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
         <li><strong>Packager</strong>: descarga im&aacute;genes (opcional), crea <code>result.zip</code>, limpia temporales</li>
       </ul>
       <div class="note">Tres guards corren en paralelo: Guard 1 (timeout global 30 min), Guard 2 (watchdog de inactividad LLM 5 min), Guard 3 (cleanup TTL 15 min tras estado terminal).</div>
+      <h3>Rangos de Progreso</h3>
+      <p>El campo <code>progress.percent</code> mapea a una barra global 0→100% a través de todas las fases del pipeline:</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fase</th><th>Inicio %</th><th>Fin %</th><th>Notas</th></tr></thead>
+        <tbody>
+          <tr><td><code>queued</code></td><td>0</td><td>0</td><td>Esperando inicio</td></tr>
+          <tr><td><code>exploring</code></td><td>0</td><td>8</td><td>Descubrimiento de rutas</td></tr>
+          <tr><td><code>fetching</code></td><td>8</td><td>25</td><td>Actualizaci&oacute;n por p&aacute;gina</td></tr>
+          <tr><td><code>extracting</code></td><td>25</td><td>35</td><td>Actualizaci&oacute;n por p&aacute;gina</td></tr>
+          <tr><td><code>auditing</code></td><td>35</td><td>40</td><td>Verificaci&oacute;n de cobertura</td></tr>
+          <tr><td><code>analyzing</code></td><td>40</td><td>92</td><td>Actualizaci&oacute;n por lote LLM</td></tr>
+          <tr><td><code>packaging</code></td><td>92</td><td>99</td><td>ZIP y limpieza</td></tr>
+          <tr><td><code>done</code></td><td>100</td><td>100</td><td>Forzado por complete_job()</td></tr>
+        </tbody>
+      </table></div>
     </section>
 
     <section id="es-endpoints">

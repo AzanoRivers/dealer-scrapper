@@ -10,6 +10,7 @@ from typing import Optional
 import aiofiles
 
 from app.config import settings
+from app.core.progress import compute_percent
 from app.models.job import JobError, JobProgress, JobState, JobStatus, TERMINAL_STATUSES
 
 
@@ -121,10 +122,8 @@ class JobManager:
             state = await self.get_state(job_id)
             if state is None:
                 return
-            percent = int(pages_done / pages_total * 100) if pages_total > 0 else 0
             phase = state.status.value
-            if state.progress is not None:
-                phase = state.progress.phase
+            percent = compute_percent(phase, pages_done, pages_total)
             state.progress = JobProgress(
                 phase=phase,
                 pages_done=pages_done,

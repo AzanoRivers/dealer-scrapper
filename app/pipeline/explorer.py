@@ -407,6 +407,7 @@ async def run_explorer(job_id: str) -> bool:
 
     # Update status to exploring
     await job_manager.update_status(job_id, JobStatus.exploring)
+    await job_manager.update_progress(job_id, 0, 1)
 
     async with _build_client() as client:
         # 1. Try sitemap-based discovery (includes robots.txt)
@@ -464,4 +465,5 @@ async def run_explorer(job_id: str) -> bool:
         discovery_method,
         len(routes),
     )
+    await job_manager.update_progress(job_id, 1, 1)
     return True
