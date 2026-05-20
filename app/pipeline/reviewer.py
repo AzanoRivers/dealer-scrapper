@@ -13,6 +13,7 @@ Returns True on success, False if the job was failed due to an LLM error.
 import asyncio
 import json
 import logging
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,6 +26,18 @@ from app.core.job_manager import job_manager
 from app.models.job import JobStatus
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Think-tag stripper — safety net for reasoning models (kimi, deepseek-r1…)
+# ---------------------------------------------------------------------------
+
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>…</think> blocks that reasoning models may prepend."""
+    return _THINK_RE.sub("", text).strip()
+
 
 # ---------------------------------------------------------------------------
 # Custom exceptions
@@ -125,13 +138,15 @@ class LLMClient:
         if self.provider == "anthropic":
             content_blocks = response_json.get("content", [])
             if content_blocks:
-                return str(content_blocks[0].get("text", ""))
+                raw = str(content_blocks[0].get("text", ""))
+                return _strip_think_tags(raw)
             return ""
-        # openai / deepseek / minimax
+        # openai / deepseek / minimax / nvidia
         choices = response_json.get("choices", [])
         if choices:
             message = choices[0].get("message", {})
-            return str(message.get("content", ""))
+            raw = str(message.get("content", ""))
+            return _strip_think_tags(raw)
         return ""
 
     async def _do_request(
@@ -152,9 +167,9 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        # nvidia can be slow to start — give it more read time before declaring timeout
+        # nvidia/kimi reasoning models are slow — allow up to 240s for a read
         if self.provider == "nvidia":
-            timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
+            timeout = httpx.Timeout(connect=15.0, read=240.0, write=15.0, pool=15.0)
         else:
             timeout = httpx.Timeout(60.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -673,7 +688,14 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             return False
 
         if not raw_response:
-            # Timeout detected — watchdog will handle failing the job
+            # Guard 2 is cancelled by run_pipeline after we return False,
+            # so we must fail the job explicitly — never rely on the watchdog here.
+            await job_manager.fail_job(
+                job_id,
+                "LLM_TIMEOUT",
+                "El modelo LLM no respondió (timeout en batch). Intenta de nuevo.",
+                retry_after=300,
+            )
             return False
 
         activity_event.set()  # Point 2: response received
@@ -739,7 +761,12 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             return False
 
         if not merged_raw:
-            # Timeout — watchdog handles it
+            await job_manager.fail_job(
+                job_id,
+                "LLM_TIMEOUT",
+                "El modelo LLM no respondió en la fase de consolidación (timeout). Intenta de nuevo.",
+                retry_after=300,
+            )
             return False
 
         try:
