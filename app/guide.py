@@ -459,7 +459,7 @@ _GUIDE_HTML = """<!DOCTYPE html>
 
     <section id="en-errors">
       <h2>Error Codes</h2>
-      <p>When a job fails, <code>GET /status</code> returns <code>status: "failed"</code> with an <code>error</code> object containing <code>code</code>, <code>message</code>, and <code>retry_after</code>.</p>
+      <p>When a job fails, <code>GET /status</code> returns <code>status: "failed"</code> with an <code>error</code> object containing <code>code</code>, <code>message</code>, <code>failed_at</code> (ISO 8601 UTC timestamp), and <code>retry_after</code> (seconds, or null).</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Code</th><th>Cause</th><th>retry_after</th><th>Action</th></tr></thead>
         <tbody>
@@ -803,7 +803,7 @@ curl -s "https://scraper.azanolabs.com/api/v1/scrape/$JOB_ID/result" \\
 
     <section id="es-errors">
       <h2>C&oacute;digos de Error</h2>
-      <p>Cuando un job falla, <code>GET /status</code> devuelve <code>status: "failed"</code> con un objeto <code>error</code> que contiene <code>code</code>, <code>message</code> y <code>retry_after</code>.</p>
+      <p>Cuando un job falla, <code>GET /status</code> devuelve <code>status: "failed"</code> con un objeto <code>error</code> que contiene <code>code</code>, <code>message</code>, <code>failed_at</code> (timestamp ISO 8601 UTC) y <code>retry_after</code> (segundos, o null).</p>
       <div class="table-wrap"><table>
         <thead><tr><th>C&oacute;digo</th><th>Causa</th><th>retry_after</th><th>Acci&oacute;n</th></tr></thead>
         <tbody>

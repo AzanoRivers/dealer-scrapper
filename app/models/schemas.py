@@ -63,9 +63,10 @@ class ServerStatusResponse(BaseModel):
 class RootResponse(BaseModel):
     name: str
     version: str
+    author: str
     status: str
-    port: int
-    docs: str
+    uptime: str
+    uptime_seconds: int
 
 
 class DeleteResponse(BaseModel):

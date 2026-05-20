@@ -167,6 +167,12 @@ async def guide_ai() -> Any:
             },
             {
                 "method": "GET",
+                "path": "/guide",
+                "auth": False,
+                "description": "Referencia HTML bilingüe de la API (para humanos).",
+            },
+            {
+                "method": "GET",
                 "path": "/guide-ai",
                 "auth": False,
                 "description": "Este documento. Referencia completa para agentes IA.",
