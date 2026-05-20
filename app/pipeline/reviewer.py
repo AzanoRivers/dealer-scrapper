@@ -333,11 +333,11 @@ def _validate_schema_structure(
 # ---------------------------------------------------------------------------
 
 BATCH_SYSTEM_PROMPT: str = (
-    "Eres un asistente especializado en análisis exhaustivo de sitios web y negocios. "
+    "Eres un asistente especializado en análisis de sitios web y extracción de estructura de navegación. "
     "Analiza TODAS las páginas proporcionadas con detalle y extrae información estructurada en JSON. "
-    "Para cada página, identifica y clasifica TODOS los elementos de contenido relevantes: "
-    "encabezados (h1, h2, h3), subtítulos, descripciones, meta descripciones, párrafos clave, "
-    "llamadas a la acción, datos de contacto, servicios, productos y cualquier texto significativo. "
+    "Identifica la estructura de navegación del sitio (home, about, services, contact, blog, portfolio, etc.) "
+    "infiriéndola de las URLs, menús, encabezados y contexto del contenido. "
+    "Para cada sección, clasifica y extrae los elementos de contenido relevantes con su tipo semántico. "
     "Responde ÚNICAMENTE con JSON válido, sin texto adicional ni explicaciones."
 )
 
@@ -375,17 +375,17 @@ def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
         if og:
             og_parts = [f"{k}: {v}" for k, v in og.items() if v]
             if og_parts:
-                section += f"\nOpen Graph: {', '.join(og_parts)[:800]}"
+                section += f"\nOpen Graph: {', '.join(og_parts)[:1000]}"
 
         if schema:
             try:
-                schema_str = json.dumps(schema, ensure_ascii=False)[:1500]
+                schema_str = json.dumps(schema, ensure_ascii=False)[:2000]
                 section += f"\nEsquema estructurado (JSON-LD): {schema_str}"
             except Exception:
                 pass
 
         if text:
-            section += f"\nContenido:\n{text[:2500]}"
+            section += f"\nContenido:\n{text[:3000]}"
 
         parts.append(section)
 
@@ -415,11 +415,15 @@ def build_schema_batch_prompt(
                 "- Usa null para campos sin información disponible en las páginas.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
-                "- Para el campo 'elements' de cada página: hasta 6 elementos con tipo semántico "
-                "('h1', 'h2', 'h3', 'subtitle', 'description', 'meta_description', 'cta', "
-                "'service', 'product') y texto de máximo 100 caracteres cada uno. "
-                "Si no hay elementos, devuelve [].\n"
-                "- Para 'summary': 2 oraciones concisas sobre el contenido real de la página.\n\n"
+                "- Para 'nav_sections': identifica las secciones principales del sitio "
+                "(home, about, services, contact, blog, gallery, portfolio, faq, pricing, team, other). "
+                "Para cada sección incluye: 'section_type' (uno de los tipos anteriores), "
+                "'label' (nombre de la sección en el menú o página), 'url' (URL de la sección), "
+                "'elements' (hasta 10 elementos con 'type' semántico: "
+                "'h1', 'h2', 'h3', 'description', 'cta', 'service', 'product', 'contact', "
+                "'feature', 'benefit' y 'text' de máximo 150 caracteres). "
+                "Sin secciones duplicadas por URL.\n"
+                "- La página raíz '/' o similar siempre es section_type: 'home'.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"Páginas a analizar:\n{pages_text}"
             ),
@@ -451,9 +455,9 @@ def build_schema_merge_prompt(
                 "- Usa null para campos sin información disponible.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
-                "- Consolida key_pages sin duplicados: si la misma URL aparece en varios "
-                "análisis parciales, fusiona sus 'elements' sin repetir entradas idénticas.\n"
-                "- Preserva TODOS los elementos de 'elements' de todas las páginas; no truncar.\n\n"
+                "- Consolida nav_sections sin duplicados: si la misma URL aparece en varios "
+                "análisis parciales, fusiona sus 'elements' sin repetir entradas idénticas. "
+                "Preserva TODAS las secciones y sus elementos; no truncar.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"URL base del sitio: {base_url}\n\n"
                 f"Análisis parciales:\n{summaries_text}"
@@ -666,6 +670,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     model: str = (
         (state.options.get("llm_model") or "") or settings.LLM_MODEL
     )
+    max_tokens_override: int = int(state.options.get("max_tokens") or settings.LLM_MAX_TOKENS)
     # response_schema is mandatory — every job must provide it.
     response_schema: Optional[dict[str, Any]] = state.options.get("response_schema")
     if response_schema is None:
@@ -720,7 +725,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         try:
             raw_response: str = await client.complete(
                 batch_messages,
-                max_tokens=settings.LLM_MAX_TOKENS,
+                max_tokens=max_tokens_override,
                 temperature=settings.LLM_TEMPERATURE,
             )
         except LLMAuthError:
@@ -793,7 +798,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         try:
             merged_raw: str = await client.complete(
                 merge_messages,
-                max_tokens=settings.LLM_MAX_TOKENS,
+                max_tokens=max_tokens_override,
                 temperature=settings.LLM_TEMPERATURE,
             )
         except LLMAuthError:
