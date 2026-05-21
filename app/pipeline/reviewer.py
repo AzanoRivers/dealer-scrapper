@@ -384,6 +384,31 @@ def _build_pages_text(pages_data: list[dict[str, Any]]) -> str:
             except Exception:
                 pass
 
+        # Images with role hints (max 8 per page — enough signal without flooding)
+        raw_images: list[Any] = p.get("images", []) or []
+        meaningful: list[Any] = [
+            img for img in raw_images
+            if img.get("src")
+            and img.get("role_hint") != "logo"          # logos are noise in section context
+            and not (                                    # skip tiny icons (explicit size < 50px)
+                isinstance(img.get("width"), int) and img["width"] < 50
+            )
+        ][:8]
+        if meaningful:
+            img_parts: list[str] = []
+            for img in meaningful:
+                hint = img.get("role_hint", "reference")
+                alt  = img.get("alt", "").strip()
+                src  = img.get("src", "")
+                w    = img.get("width")
+                entry = f"[{hint}] {src}"
+                if alt:
+                    entry += f' alt="{alt}"'
+                if w:
+                    entry += f" w={w}"
+                img_parts.append(entry)
+            section += f"\nImágenes: {' | '.join(img_parts)}"
+
         if text:
             section += f"\nContenido:\n{text[:3000]}"
 
@@ -423,7 +448,17 @@ def build_schema_batch_prompt(
                 "'h1', 'h2', 'h3', 'description', 'cta', 'service', 'product', 'contact', "
                 "'feature', 'benefit' y 'text' de máximo 150 caracteres). "
                 "Sin secciones duplicadas por URL.\n"
-                "- La página raíz '/' o similar siempre es section_type: 'home'.\n\n"
+                "- La página raíz '/' o similar siempre es section_type: 'home'.\n"
+                "- Para 'images' de cada sección: usa las URLs listadas en 'Imágenes:' de cada página "
+                "y selecciona hasta 3 imágenes relevantes para esa sección. "
+                "Para cada imagen incluye: 'src' (URL exacta sin modificar), "
+                "'alt' (texto alt o descripción breve), "
+                "'role' (uno de: 'banner' para imagen principal/héroe/portada, "
+                "'gallery_item' para elemento de galería o carrusel, "
+                "'reference' para imagen ilustrativa de contenido, "
+                "'logo' para logotipo o marca), "
+                "'caption' (descripción corta opcional, puede ser null). "
+                "Si una página no tiene imágenes listadas, deja 'images' como [].\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"Páginas a analizar:\n{pages_text}"
             ),
@@ -457,7 +492,10 @@ def build_schema_merge_prompt(
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
                 "- Consolida nav_sections sin duplicados: si la misma URL aparece en varios "
                 "análisis parciales, fusiona sus 'elements' sin repetir entradas idénticas. "
-                "Preserva TODAS las secciones y sus elementos; no truncar.\n\n"
+                "Preserva TODAS las secciones y sus elementos; no truncar.\n"
+                "- Para 'images' de cada sección: fusiona las imágenes de todos los análisis "
+                "parciales para esa sección, elimina duplicados por 'src', conserva hasta 3 "
+                "imágenes por sección respetando los campos 'src', 'alt', 'role' y 'caption'.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"URL base del sitio: {base_url}\n\n"
                 f"Análisis parciales:\n{summaries_text}"

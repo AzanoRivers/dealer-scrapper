@@ -141,6 +141,52 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
     external_links: list[str] = list(dict.fromkeys(external_links_raw))
 
     # -- images --------------------------------------------------------------
+    _BANNER_CLASSES  = {"hero", "banner", "header", "splash", "cover",
+                        "jumbotron", "masthead", "main-image", "featured"}
+    _GALLERY_CLASSES = {"gallery", "carousel", "slider", "swiper",
+                        "lightbox", "thumb", "thumbnail", "mosaic", "grid"}
+    _LOGO_CLASSES    = {"logo", "brand", "wordmark", "site-logo"}
+    _og_image: str   = og_data.get("og:image", "")
+
+    def _image_role_hint(img_tag: object, abs_src: str) -> str:  # type: ignore[type-arg]
+        if _og_image and abs_src == urljoin(page_url, _og_image):
+            return "banner"
+        all_classes: set[str] = set()
+        # Collect CSS classes from img and its ancestors (up to 4 levels)
+        node = img_tag
+        for _ in range(5):
+            try:
+                cls = node.get("class", [])  # type: ignore[union-attr]
+                if cls:
+                    all_classes.update(c.lower() for c in cls)
+                node = node.parent  # type: ignore[union-attr]
+                if node is None or node.name in ("html", "body", "[document]"):
+                    break
+            except AttributeError:
+                break
+        classes_str = " ".join(all_classes)
+        if any(kw in classes_str for kw in _LOGO_CLASSES):
+            return "logo"
+        if any(kw in classes_str for kw in _BANNER_CLASSES):
+            return "banner"
+        if any(kw in classes_str for kw in _GALLERY_CLASSES):
+            return "gallery_item"
+        # Parent element hints
+        try:
+            parent = img_tag.find_parent(["header", "figure", "aside"])  # type: ignore[union-attr]
+            if parent:
+                if parent.name == "header":
+                    return "banner"
+                if parent.name == "figure":
+                    return "reference"
+        except AttributeError:
+            pass
+        # Large explicit width → likely banner
+        width_attr = img_tag.get("width", "")  # type: ignore[union-attr]
+        if str(width_attr).isdigit() and int(width_attr) >= 600:
+            return "banner"
+        return "reference"
+
     images: list[dict] = []
     for img in soup.find_all("img"):
         src: str = img.get("src", "")
@@ -155,6 +201,7 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
                 "alt": img.get("alt", ""),
                 "width": int(width_str) if width_str.isdigit() else None,
                 "height": int(height_str) if height_str.isdigit() else None,
+                "role_hint": _image_role_hint(img, abs_src),
             }
         )
 

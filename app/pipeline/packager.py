@@ -135,10 +135,32 @@ async def run_packager(job_id: str) -> bool:
 
     # 2. Read result.json
     result_data: dict = json.loads(result_path.read_text(encoding="utf-8"))
-    images_in_result: list[dict] = result_data.get("assets", {}).get("images", [])
+
+    # Collect images from nav_sections, deduplicated by src, with section metadata.
+    # Each entry keeps a reference (_img_ref) to the original object so we can
+    # inject local_path back into result_data in place.
+    nav_sections: list[dict] = result_data.get("data", {}).get("nav_sections", []) or []
+    images_flat: list[dict] = []
+    _seen_srcs: set[str] = set()
+    for _section in nav_sections:
+        for _img in _section.get("images", []) or []:
+            _src: str = _img.get("src", "")
+            if _src and _src not in _seen_srcs:
+                _seen_srcs.add(_src)
+                images_flat.append(
+                    {
+                        "src": _src,
+                        "alt": _img.get("alt", ""),
+                        "role": _img.get("role", "reference"),
+                        "caption": _img.get("caption"),
+                        "section_label": _section.get("label", ""),
+                        "section_type": _section.get("section_type", "other"),
+                        "_img_ref": _img,
+                    }
+                )
 
     # 3. Download images if enabled
-    if settings.DOWNLOAD_IMAGES and images_in_result:
+    if settings.DOWNLOAD_IMAGES and images_flat:
         images_dir = job_dir / "images"
         images_dir.mkdir(exist_ok=True)
 
@@ -147,20 +169,22 @@ async def run_packager(job_id: str) -> bool:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(10.0), follow_redirects=True
         ) as client:
-            for idx, img in enumerate(images_in_result):
-                src: str = img.get("src", "")
-                if not src:
-                    continue
+            for idx, entry in enumerate(images_flat):
+                src: str = entry["src"]
                 filename, success = await _download_image(client, src, idx, images_dir)
                 if success:
-                    # Update local_path in result_data (img is a reference)
-                    img["local_path"] = f"images/{filename}"
+                    # Inject local_path into original img object in result_data
+                    entry["_img_ref"]["local_path"] = f"images/{filename}"
                     img_path = images_dir / filename
                     downloaded.append(
                         {
                             "filename": filename,
                             "original_url": src,
-                            "alt": img.get("alt", ""),
+                            "alt": entry["alt"],
+                            "role": entry["role"],
+                            "caption": entry["caption"],
+                            "section_label": entry["section_label"],
+                            "section_type": entry["section_type"],
                             "size_bytes": img_path.stat().st_size,
                         }
                     )
