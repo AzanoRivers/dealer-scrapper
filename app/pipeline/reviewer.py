@@ -63,7 +63,6 @@ _PROVIDER_URLS: dict[str, str] = {
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "minimax": "https://api.minimax.chat/v1/text/chatcompletion_v2",
-    "zai": "https://api.z.ai/v1/chat/completions",
 }
 
 
@@ -127,8 +126,8 @@ class LLMClient:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        # openai, nvidia, deepseek, zai support response_format; minimax does not
-        if self.provider in ("openai", "nvidia", "deepseek", "zai"):
+        # openai, nvidia, deepseek support response_format; minimax does not
+        if self.provider in ("openai", "nvidia", "deepseek"):
             payload["response_format"] = {"type": "json_object"}
         # nvidia/kimi has reasoning on by default — disable to avoid <think> tags breaking JSON parse
         if self.provider == "nvidia":
@@ -169,8 +168,8 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        # nvidia y zai pueden tardar — 120s de read (2 min); resto 60s
-        if self.provider in ("nvidia", "zai"):
+        # nvidia puede tardar — 120s de read (2 min); resto 60s
+        if self.provider == "nvidia":
             timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
         else:
             timeout = httpx.Timeout(60.0)
@@ -757,13 +756,14 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     job_url_early: str = state.url
     primary_client = LLMClient(primary_provider, primary_model, settings.LLM_API_KEY)
 
-    # Fallback client (emergencia) — activo solo si LLM_FALLBACK_API_KEY está configurado
+    # Fallback client (emergencia) — si LLM_FALLBACK_API_KEY está vacío, reutiliza LLM_API_KEY
     fallback_client: Optional[LLMClient] = None
-    if settings.LLM_FALLBACK_API_KEY and settings.LLM_FALLBACK_PROVIDER:
+    _fallback_key = settings.LLM_FALLBACK_API_KEY or settings.LLM_API_KEY
+    if _fallback_key and settings.LLM_FALLBACK_PROVIDER and settings.LLM_FALLBACK_MODEL:
         fallback_client = LLMClient(
             settings.LLM_FALLBACK_PROVIDER,
             settings.LLM_FALLBACK_MODEL,
-            settings.LLM_FALLBACK_API_KEY,
+            _fallback_key,
         )
 
     # Rastrea qué provider/model fue usado realmente (para los metadatos del resultado)

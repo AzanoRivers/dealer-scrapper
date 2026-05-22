@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["*"]
 
     # === LLM Provider (principal) ===
-    LLM_PROVIDER: str = "zai"
-    LLM_MODEL: str = "glm-5.1"
+    LLM_PROVIDER: str = "nvidia"
+    LLM_MODEL: str = "z-ai/glm-5.1"
     LLM_API_KEY: str = ""
     LLM_MAX_TOKENS: int = 6000
     LLM_TEMPERATURE: float = 0.2
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     # === LLM Fallback (emergencia — si el principal no responde en 2 min) ===
     LLM_FALLBACK_PROVIDER: str = "nvidia"
     LLM_FALLBACK_MODEL: str = "moonshotai/kimi-k2.6"
-    LLM_FALLBACK_API_KEY: str = ""
+    LLM_FALLBACK_API_KEY: str = ""  # si vacío, reutiliza LLM_API_KEY
 
     # === Crawler ===
     MAX_CONCURRENT_FETCHES: int = 3
