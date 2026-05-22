@@ -121,10 +121,12 @@ class LLMClient:
             return payload
 
         # openai / deepseek / minimax — OpenAI-compatible
+        # openai newer models (gpt-5+, o-series) require max_completion_tokens; older accept both
+        tokens_key = "max_completion_tokens" if self.provider == "openai" else "max_tokens"
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": max_tokens,
+            tokens_key: max_tokens,
         }
         if self.reasoning_effort:
             # Reasoning models (o1/o3/o4/o5): use reasoning_effort, NOT temperature
