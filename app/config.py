@@ -23,11 +23,13 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = ""
     LLM_MAX_TOKENS: int = 6000
     LLM_TEMPERATURE: float = 0.2
+    LLM_REASONING_EFFORT: str = ""  # "low"|"medium"|"high" — solo para reasoning models (o1/o3/o4/o5). Vacío = ignorar
 
     # === LLM Fallback (emergencia — si el principal no responde en 2 min) ===
     LLM_FALLBACK_PROVIDER: str = "nvidia"
     LLM_FALLBACK_MODEL: str = "moonshotai/kimi-k2.6"
     LLM_FALLBACK_API_KEY: str = ""  # si vacío, reutiliza LLM_API_KEY
+    LLM_FALLBACK_REASONING_EFFORT: str = ""  # "low"|"medium"|"high" — solo para reasoning models. Vacío = ignorar
 
     # === Concurrencia de jobs ===
     MAX_CONCURRENT_JOBS: int = 1

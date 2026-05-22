@@ -77,10 +77,11 @@ class LLMClient:
     Supports: openai, nvidia, deepseek, anthropic, minimax.
     """
 
-    def __init__(self, provider: str, model: str, api_key: str) -> None:
+    def __init__(self, provider: str, model: str, api_key: str, reasoning_effort: str = "") -> None:
         self.provider = provider
         self.model = model
         self.api_key = api_key
+        self.reasoning_effort = reasoning_effort  # "" = standard model; "low|medium|high" = reasoning model
         self._url: str = _PROVIDER_URLS.get(provider, _PROVIDER_URLS["openai"])
 
     def _build_headers(self) -> dict[str, str]:
@@ -120,12 +121,16 @@ class LLMClient:
             return payload
 
         # openai / deepseek / minimax — OpenAI-compatible
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": temperature,
         }
+        if self.reasoning_effort:
+            # Reasoning models (o1/o3/o4/o5): use reasoning_effort, NOT temperature
+            payload["reasoning_effort"] = self.reasoning_effort
+        else:
+            payload["temperature"] = temperature
         # openai, nvidia, deepseek support response_format; minimax does not
         if self.provider in ("openai", "nvidia", "deepseek"):
             payload["response_format"] = {"type": "json_object"}
@@ -765,7 +770,10 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         return False
 
     job_url_early: str = state.url
-    primary_client = LLMClient(primary_provider, primary_model, settings.LLM_API_KEY)
+    primary_client = LLMClient(
+        primary_provider, primary_model, settings.LLM_API_KEY,
+        reasoning_effort=settings.LLM_REASONING_EFFORT,
+    )
 
     # Fallback client (emergencia) — si LLM_FALLBACK_API_KEY está vacío, reutiliza LLM_API_KEY
     fallback_client: Optional[LLMClient] = None
@@ -775,6 +783,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             settings.LLM_FALLBACK_PROVIDER,
             settings.LLM_FALLBACK_MODEL,
             _fallback_key,
+            reasoning_effort=settings.LLM_FALLBACK_REASONING_EFFORT,
         )
 
     # Rastrea qué provider/model fue usado realmente (para los metadatos del resultado)
@@ -919,7 +928,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
                 "Invalid API key or no credits (both models failed).",
             )
             return False
-        except LLMParseError:
+        except LLMParseError as exc:
+            logger.error("Reviewer batch LLM_PARSE_ERROR (job=%s batch=%d): %s", job_id, i, exc)
             await job_manager.fail_job(
                 job_id, "LLM_PARSE_ERROR",
                 "Invalid JSON response from both models.",
@@ -972,7 +982,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
                 "Invalid API key or no credits (both models failed).",
             )
             return False
-        except LLMParseError:
+        except LLMParseError as exc:
+            logger.error("Reviewer merge LLM_PARSE_ERROR (job=%s): %s", job_id, exc)
             await job_manager.fail_job(
                 job_id, "LLM_PARSE_ERROR",
                 "Invalid JSON response in consolidation (both models).",
