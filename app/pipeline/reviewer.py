@@ -9,6 +9,7 @@ This module only calls activity_event.set() at the prescribed checkpoints.
 
 Returns True on success, False if the job was failed due to an LLM error.
 """
+from __future__ import annotations
 
 import asyncio
 import json
