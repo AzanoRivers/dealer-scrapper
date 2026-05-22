@@ -1021,8 +1021,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     logger.info(
         "Reviewer: job=%s provider=%s model=%s pages_analyzed=%d",
         job_id,
-        provider,
-        model,
+        actual_provider,
+        actual_model,
         len(valid_hashes),
     )
     return True
