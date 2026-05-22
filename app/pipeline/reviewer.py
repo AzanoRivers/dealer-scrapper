@@ -343,9 +343,19 @@ BATCH_SYSTEM_PROMPT: str = (
 )
 
 
+def _is_home_url(url: str) -> bool:
+    """True when the URL is the root/home of the site."""
+    try:
+        from urllib.parse import urlparse as _up
+        return _up(url).path in ("", "/", "/index.html", "/index.php", "/home")
+    except Exception:
+        return False
+
+
 def _build_pages_text(
     pages_data: list[dict[str, Any]],
     src_to_catalogue: dict[str, dict] | None = None,
+    base_url: str = "",
 ) -> str:
     """
     Build the text representation of a batch of pages for the LLM prompt.
@@ -357,9 +367,15 @@ def _build_pages_text(
     When src_to_catalogue is provided, image roles are overridden with the
     aggregate final_role from image_catalogue.json (more accurate than per-page
     role_hint, and filters repeated site-wide elements like logos).
+
+    The home/root page gets higher text and heading limits so the LLM sees
+    all hero copy, services, CTAs, and marketing content.
     """
     parts: list[str] = []
     for p in pages_data:
+        page_url: str = p.get("url", "")
+        is_home: bool = _is_home_url(page_url)
+
         text: str = str(p.get("text_content", "") or "").strip()
         meta_desc: str = str(p.get("meta_description", "") or "").strip()
         # headings is {"h1": [...], "h2": [...], "h3": [...]}
@@ -371,13 +387,17 @@ def _build_pages_text(
         og: dict[str, Any] = p.get("og_data", {}) or {}
         schema: list[Any] = p.get("schema_org", []) or []
 
-        section = f"URL: {p.get('url', '')}\nTítulo: {p.get('title', '')}"
+        section = f"URL: {page_url}\nTítulo: {p.get('title', '')}"
+        if is_home:
+            section += "\n[PÁGINA PRINCIPAL — analiza con MÁXIMA profundidad]"
 
         if meta_desc:
             section += f"\nMeta descripción: {meta_desc}"
 
         if headings:
-            headings_str = " | ".join(headings[:40])
+            # Home page: send all headings (no cap); others: cap at 40
+            headings_limit = len(headings) if is_home else 40
+            headings_str = " | ".join(headings[:headings_limit])
             section += f"\nEncabezados: {headings_str}"
 
         if og:
@@ -419,7 +439,9 @@ def _build_pages_text(
             section += f"\nImágenes: {' | '.join(img_parts)}"
 
         if text:
-            section += f"\nContenido:\n{text[:8000]}"
+            # Home page: up to 15 000 chars; others: 8 000
+            text_limit = 15_000 if is_home else 8_000
+            section += f"\nContenido:\n{text[:text_limit]}"
 
         parts.append(section)
 
@@ -430,12 +452,13 @@ def build_schema_batch_prompt(
     pages_data: list[dict[str, Any]],
     response_schema: dict[str, Any],
     src_to_catalogue: dict[str, dict] | None = None,
+    base_url: str = "",
 ) -> list[dict[str, Any]]:
     """
     Builds the messages list for a batch of pages when the client provided a
     custom response_schema. The LLM is instructed to fill EXACTLY that structure.
     """
-    pages_text: str = _build_pages_text(pages_data, src_to_catalogue)
+    pages_text: str = _build_pages_text(pages_data, src_to_catalogue, base_url)
     schema_str: str = json.dumps(response_schema, ensure_ascii=False, indent=2)
     return [
         {"role": "system", "content": BATCH_SYSTEM_PROMPT},
@@ -450,17 +473,23 @@ def build_schema_batch_prompt(
                 "- Usa null para campos sin información disponible en las páginas.\n"
                 "- Si un campo es un array, devuelve un array (puede estar vacío []).\n"
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
+                "- PRIORIDAD MÁXIMA — PÁGINA PRINCIPAL: La página marcada como "
+                "[PÁGINA PRINCIPAL] es la más importante del sitio. Extrae de ella "
+                "TODOS los elementos disponibles: hero/banner, servicios, propuesta de valor, "
+                "CTAs, características, beneficios, equipo, testimonios, precios, y cualquier "
+                "sección de contenido visible. No truncar ni resumir el home.\n"
                 "- Para 'nav_sections': identifica las secciones principales del sitio "
                 "(home, about, services, contact, blog, gallery, portfolio, faq, pricing, team, other). "
                 "Para cada sección incluye: 'section_type' (uno de los tipos anteriores), "
                 "'label' (nombre de la sección en el menú o página), 'url' (URL de la sección), "
-                "'elements' (hasta 10 elementos con 'type' semántico: "
+                "'elements' (hasta 25 elementos para 'home', hasta 10 para el resto; "
+                "con 'type' semántico: "
                 "'h1', 'h2', 'h3', 'description', 'cta', 'service', 'product', 'contact', "
                 "'feature', 'benefit' y 'text' de máximo 150 caracteres). "
                 "Sin secciones duplicadas por URL.\n"
                 "- La página raíz '/' o similar siempre es section_type: 'home'.\n"
                 "- Para 'images' de cada sección: usa las URLs listadas en 'Imágenes:' de cada página "
-                "y selecciona hasta 3 imágenes relevantes para esa sección. "
+                "e incluye TODAS las imágenes relevantes para esa sección, sin límite de cantidad. "
                 "Para cada imagen incluye: 'src' (URL exacta sin modificar), "
                 "'alt' (texto alt o descripción breve), "
                 "'role' (uno de: 'banner' para imagen principal/héroe/portada, "
@@ -502,10 +531,11 @@ def build_schema_merge_prompt(
                 "- Si un campo es un objeto, devuelve un objeto con las mismas claves.\n"
                 "- Consolida nav_sections sin duplicados: si la misma URL aparece en varios "
                 "análisis parciales, fusiona sus 'elements' sin repetir entradas idénticas. "
-                "Preserva TODAS las secciones y sus elementos; no truncar.\n"
+                "Preserva TODAS las secciones y sus elementos; no truncar. "
+                "Para la sección 'home' preserva TODOS los elementos sin límite.\n"
                 "- Para 'images' de cada sección: fusiona las imágenes de todos los análisis "
-                "parciales para esa sección, elimina duplicados por 'src', conserva hasta 3 "
-                "imágenes por sección respetando los campos 'src', 'alt', 'role' y 'caption'.\n\n"
+                "parciales para esa sección, elimina duplicados por 'src', conserva TODAS "
+                "las imágenes (sin límite) respetando los campos 'src', 'alt', 'role' y 'caption'.\n\n"
                 f"Estructura requerida:\n{schema_str}\n\n"
                 f"URL base del sitio: {base_url}\n\n"
                 f"Análisis parciales:\n{summaries_text}"
@@ -732,6 +762,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         )
         return False
 
+    job_url_early: str = state.url
     client = LLMClient(provider, model, settings.LLM_API_KEY)
 
     # 3b. Load image catalogue (optional — generated by image_crawler after extractor)
@@ -789,7 +820,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             continue
 
         # Build schema-aware prompt (with catalogue for richer image roles)
-        batch_messages = build_schema_batch_prompt(pages_data, response_schema, src_to_catalogue)
+        batch_messages = build_schema_batch_prompt(pages_data, response_schema, src_to_catalogue, job_url_early)
 
         try:
             raw_response: str = await client.complete(

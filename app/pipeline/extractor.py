@@ -122,11 +122,17 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
     bs4_text = soup.get_text(separator=" ", strip=True)
     # Use whichever source provides more content — readability can strip too
     # aggressively on non-article pages (navigation-heavy or thin content).
-    raw_text = (
-        readability_text
-        if len(readability_text.split()) >= len(bs4_text.split())
-        else bs4_text
-    )
+    # Home/root pages: always use full BS4 text to preserve hero sections,
+    # services, CTAs, and marketing copy that readability strips.
+    _is_root_page = urlparse(page_url).path in ("", "/", "/index.html", "/index.php")
+    if _is_root_page:
+        raw_text = bs4_text
+    else:
+        raw_text = (
+            readability_text
+            if len(readability_text.split()) >= len(bs4_text.split())
+            else bs4_text
+        )
     text_content: str = raw_text[:25_000]
 
     # -- word_count ----------------------------------------------------------
