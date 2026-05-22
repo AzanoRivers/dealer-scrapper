@@ -127,7 +127,7 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
         if len(readability_text.split()) >= len(bs4_text.split())
         else bs4_text
     )
-    text_content: str = raw_text[:10_000]
+    text_content: str = raw_text[:25_000]
 
     # -- word_count ----------------------------------------------------------
     word_count: int = len(text_content.split())
@@ -228,13 +228,18 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
     # -- 1. OG image (prepend at index 0, added last after we build the rest) --
     _og_image_abs: str = urljoin(page_url, _og_image) if _og_image else ""
 
-    # -- 2. <img> tags (src, data-src, data-lazy-src for lazy-load) -----------
+    # -- 2. <img> tags — covers standard src + common lazy-load attr patterns ---
     for img in soup.find_all("img"):
-        # Try src, then data-src, then data-lazy-src
+        # Priority order: src → lazy-load variants (jQuery, WP, Swiper, etc.)
         raw_src: str = (
             img.get("src", "")
             or img.get("data-src", "")
             or img.get("data-lazy-src", "")
+            or img.get("data-original", "")       # jQuery lazyload
+            or img.get("data-lazy", "")            # WordPress
+            or img.get("data-url", "")             # various CMS
+            or img.get("data-source", "")          # some frameworks
+            or img.get("data-img", "")             # custom lazy patterns
         )
         if not raw_src:
             continue
@@ -251,24 +256,92 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
         if (w is not None and w <= 2) or (h is not None and h <= 2):
             continue
 
-        if abs_src in _seen_srcs:
-            continue
-        _seen_srcs.add(abs_src)
+        if abs_src not in _seen_srcs:
+            _seen_srcs.add(abs_src)
+            images.append(
+                {
+                    "src": abs_src,
+                    "alt": img.get("alt", ""),
+                    "width": w,
+                    "height": h,
+                    "role_hint": _image_role_hint(img, abs_src),
+                }
+            )
 
-        images.append(
-            {
-                "src": abs_src,
-                "alt": img.get("alt", ""),
-                "width": w,
-                "height": h,
-                "role_hint": _image_role_hint(img, abs_src),
-            }
-        )
+        # Parse srcset / data-srcset on the <img> tag itself (no <picture> wrapper)
+        srcset_raw: str = (img.get("srcset", "") or img.get("data-srcset", "")).strip()
+        if srcset_raw:
+            best_url_s: str = ""
+            best_desc_s: float = -1.0
+            for part in srcset_raw.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                tokens = part.split()
+                if not tokens or tokens[0].startswith("data:"):
+                    continue
+                descriptor: float = 1.0
+                if len(tokens) > 1:
+                    rd = tokens[1].lower()
+                    try:
+                        if rd.endswith("x"):
+                            descriptor = float(rd[:-1])
+                        elif rd.endswith("w"):
+                            descriptor = float(rd[:-1])
+                    except ValueError:
+                        pass
+                if descriptor > best_desc_s:
+                    best_desc_s = descriptor
+                    best_url_s = tokens[0]
+            if best_url_s:
+                abs_srcset: str = urljoin(page_url, best_url_s)
+                if abs_srcset not in _seen_srcs and abs_srcset != abs_src:
+                    _seen_srcs.add(abs_srcset)
+                    images.append(
+                        {
+                            "src": abs_srcset,
+                            "alt": img.get("alt", ""),
+                            "width": None,
+                            "height": None,
+                            "role_hint": _image_role_hint(img, abs_srcset),
+                        }
+                    )
 
-    # -- 3. <picture><source srcset> — pick highest-resolution URL ------------
+    # -- 2b. <noscript> fallbacks — lazy-loaders hide real img inside noscript --
+    for noscript_tag in soup.find_all("noscript"):
+        try:
+            ns_html = noscript_tag.decode_contents()
+            if not ns_html.strip():
+                continue
+            ns_soup = BeautifulSoup(ns_html, "html.parser")
+            for ns_img in ns_soup.find_all("img"):
+                ns_raw: str = (
+                    ns_img.get("src", "")
+                    or ns_img.get("data-src", "")
+                    or ns_img.get("data-original", "")
+                )
+                if not ns_raw or ns_raw.startswith("data:"):
+                    continue
+                abs_ns = urljoin(page_url, ns_raw)
+                if abs_ns in _seen_srcs:
+                    continue
+                _seen_srcs.add(abs_ns)
+                images.append(
+                    {
+                        "src": abs_ns,
+                        "alt": ns_img.get("alt", ""),
+                        "width": None,
+                        "height": None,
+                        "role_hint": "reference",
+                    }
+                )
+        except Exception:
+            pass
+
+    # -- 3. <picture><source srcset|data-srcset> — pick highest-resolution URL -
     for picture in soup.find_all("picture"):
         for source in picture.find_all("source"):
-            srcset_raw: str = source.get("srcset", "").strip()
+            srcset_raw: str = (source.get("srcset", "") or source.get("data-srcset", "")).strip()
             if not srcset_raw:
                 continue
             # Parse srcset: "url1 1x, url2 2x" or "url1 500w, url2 1000w"
@@ -375,6 +448,30 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
                     "width": None,
                     "height": None,
                     "role_hint": "reference",
+                }
+            )
+
+    # -- 6b. data-bg / data-background / data-background-image ---------------
+    # Swiper, AOS, Intersection Observer patterns set bg via data attributes
+    for _attr in ("data-bg", "data-background", "data-background-image", "data-bkg"):
+        for bg_node in soup.find_all(attrs={_attr: True}):
+            bg_raw: str = str(bg_node.get(_attr, "")).strip()
+            # Some libs store "url(...)" inside the attribute
+            _url_match = _BG_URL_RE.search(bg_raw)
+            bg_url_clean: str = _url_match.group(1).strip() if _url_match else bg_raw
+            if not bg_url_clean or bg_url_clean.startswith("data:"):
+                continue
+            abs_src = urljoin(page_url, bg_url_clean)
+            if abs_src in _seen_srcs:
+                continue
+            _seen_srcs.add(abs_src)
+            images.append(
+                {
+                    "src": abs_src,
+                    "alt": bg_node.get("aria-label", ""),
+                    "width": None,
+                    "height": None,
+                    "role_hint": _bg_role_hint_from_node(bg_node),
                 }
             )
 

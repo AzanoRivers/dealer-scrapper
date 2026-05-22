@@ -392,7 +392,7 @@ def _build_pages_text(
             except Exception:
                 pass
 
-        # Images — use catalogue final_role when available (max 12 per page)
+        # Images — use catalogue final_role when available (no cap — send all)
         raw_images: list[Any] = p.get("images", []) or []
         meaningful: list[Any] = []
         for img in raw_images:
@@ -402,13 +402,11 @@ def _build_pages_text(
             # Resolve role: catalogue wins over per-page role_hint
             cat = src_to_catalogue.get(src) if src_to_catalogue else None
             role = cat["final_role"] if cat else img.get("role_hint", "reference")
-            if role == "logo":
-                continue  # repeated nav/footer element — noise for section context
-            if isinstance(img.get("width"), int) and img["width"] < 50:
-                continue  # tiny icon
+            # Skip only true tracking pixels (explicit width < 10px)
+            if isinstance(img.get("width"), int) and img["width"] < 10:
+                continue
             meaningful.append({"_src": src, "_role": role,
                                 "_alt": img.get("alt", ""), "_w": img.get("width")})
-        meaningful = meaningful[:12]
         if meaningful:
             img_parts: list[str] = []
             for img in meaningful:
@@ -421,7 +419,7 @@ def _build_pages_text(
             section += f"\nImágenes: {' | '.join(img_parts)}"
 
         if text:
-            section += f"\nContenido:\n{text[:3000]}"
+            section += f"\nContenido:\n{text[:8000]}"
 
         parts.append(section)
 

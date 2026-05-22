@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "nvidia"
     LLM_MODEL: str = "moonshotai/kimi-k2.6"
     LLM_API_KEY: str = ""
-    LLM_MAX_TOKENS: int = 4000
+    LLM_MAX_TOKENS: int = 6000
     LLM_TEMPERATURE: float = 0.2
 
     # === Crawler ===
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # === Auditor ===
     AUDIT_COVERAGE_MIN_PERCENT: int = 30
     AUDIT_REFETCH_ENABLED: bool = True
-    AUDIT_MAX_NEW_ROUTES: int = 10
+    AUDIT_MAX_NEW_ROUTES: int = 20
 
 
 settings = Settings()
