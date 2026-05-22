@@ -574,16 +574,27 @@ def _parse_json_response(raw: str) -> dict[str, Any]:
     # Strip markdown code fences if present
     if text.startswith("```"):
         lines = text.splitlines()
-        # Remove first line (```json or ```) and last line (```)
         inner = "\n".join(lines[1:-1]) if len(lines) > 2 else ""
         text = inner.strip()
     try:
         result = json.loads(text)
         if not isinstance(result, dict):
+            _log_bad_response(raw, "not a JSON object")
             raise LLMParseError("LLM response is not a JSON object")
         return result
     except json.JSONDecodeError as exc:
+        _log_bad_response(raw, f"JSONDecodeError at pos {exc.pos}: {exc.msg}")
         raise LLMParseError(f"JSON decode error: {exc}") from exc
+
+
+def _log_bad_response(raw: str, reason: str) -> None:
+    """Log a truncated preview of the raw LLM response for debugging."""
+    preview = raw[:500].replace("\n", "\\n")
+    last_line = raw.strip().splitlines()[-1][:120] if raw.strip() else ""
+    logger.warning(
+        "LLM parse failure — %s | first 500 chars: %r | last line: %r",
+        reason, preview, last_line,
+    )
 
 
 def _build_result_json(
