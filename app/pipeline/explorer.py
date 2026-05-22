@@ -436,7 +436,7 @@ async def run_explorer(job_id: str) -> bool:
         await job_manager.fail_job(
             job_id,
             "NO_ROUTES_FOUND",
-            "No se encontraron rutas para scrapear. El sitio puede requerir JavaScript para renderizar.",
+            "No routes found to scrape. The site may require JavaScript to render.",
         )
         return False
 

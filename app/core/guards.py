@@ -58,7 +58,7 @@ async def global_job_timeout(job_id: str) -> None:
         await job_manager.fail_job(
             job_id,
             "JOB_TIMEOUT",
-            "El job superó el tiempo máximo de ejecución (30 minutos).",
+            "Job exceeded maximum execution time (30 min).",
             retry_after=600,
         )
 
@@ -92,7 +92,7 @@ async def llm_watchdog(job_id: str, activity_event: asyncio.Event) -> None:
             await job_manager.fail_job(
                 job_id,
                 "LLM_TIMEOUT",
-                "El modelo LLM no generó actividad en 5 minutos. Proceso terminado.",
+                "LLM produced no activity for 5 min. Pipeline terminated.",
                 retry_after=300,
             )
             return
@@ -279,7 +279,7 @@ async def run_pipeline(job_id: str) -> None:
             await job_manager.fail_job(
                 job_id,
                 "INTERNAL_ERROR",
-                f"Error inesperado en el pipeline: {type(exc).__name__}",
+                f"Unexpected pipeline error: {type(exc).__name__}",
                 retry_after=60,
             )
     finally:

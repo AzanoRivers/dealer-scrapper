@@ -567,7 +567,7 @@ async def run_extractor(job_id: str) -> bool:
         await job_manager.fail_job(
             job_id,
             "EXTRACTION_EMPTY",
-            "No se pudo leer fetch_results.json. El Fetcher puede no haber completado.",
+            "Could not read fetch_results.json. Fetcher may not have completed.",
         )
         return False
 
@@ -673,8 +673,7 @@ async def run_extractor(job_id: str) -> bool:
         await job_manager.fail_job(
             job_id,
             "EXTRACTION_EMPTY",
-            "El contenido extraído está vacío. "
-            "El sitio puede requerir JavaScript para renderizar.",
+            "Extracted content is empty. The site may require JavaScript to render.",
         )
         return False
 

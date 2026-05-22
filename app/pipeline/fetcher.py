@@ -168,7 +168,7 @@ async def run_fetcher(job_id: str) -> bool:
         await job_manager.fail_job(
             job_id,
             "FETCH_ALL_FAILED",
-            "No se pudo leer routes.json. El Explorador puede no haber completado.",
+            "Could not read routes.json. Explorer may not have completed.",
         )
         return False
 
@@ -232,8 +232,7 @@ async def run_fetcher(job_id: str) -> bool:
         await job_manager.fail_job(
             job_id,
             "FETCH_ALL_FAILED",
-            "No se pudo descargar ninguna página. "
-            "El sitio puede estar bloqueando scrapers.",
+            "Failed to download any page. The site may be blocking scrapers.",
         )
         logger.warning("Fetcher: FETCH_ALL_FAILED for job %s", job_id)
         return False
