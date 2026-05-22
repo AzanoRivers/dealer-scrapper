@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -27,6 +28,17 @@ from app.core.job_manager import job_manager
 from app.models.job import JobStatus
 
 logger = logging.getLogger(__name__)
+
+# Regex for CSS background-image: url(...) extraction
+_BG_URL_RE = re.compile(
+    r'background(?:-image)?\s*:[^;{]*url\s*\(\s*[\'"]?([^\'"\)\s]+)[\'"]?\s*\)',
+    re.IGNORECASE,
+)
+
+# Keywords that indicate a CSS class belongs to a hero/banner context
+_BG_BANNER_KEYWORDS_RE = re.compile(
+    r'hero|banner|cover|header|splash', re.IGNORECASE
+)
 
 
 # ---------------------------------------------------------------------------
@@ -187,23 +199,198 @@ def _extract_page_data(html_content: str, page_url: str) -> dict:
             return "banner"
         return "reference"
 
+    def _bg_role_hint_from_node(node: object) -> str:
+        """
+        Determine role hint for a CSS background-image by inspecting
+        up to 3 ancestor levels for banner-related class keywords.
+        """
+        try:
+            current = node
+            for _ in range(3):
+                if current is None:
+                    break
+                cls_list = current.get("class", [])  # type: ignore[union-attr]
+                if cls_list:
+                    classes_str = " ".join(c.lower() for c in cls_list)
+                    if _BG_BANNER_KEYWORDS_RE.search(classes_str):
+                        return "banner"
+                current = current.parent  # type: ignore[union-attr]
+                if current is None or getattr(current, "name", None) in ("html", "body", "[document]"):
+                    break
+        except AttributeError:
+            pass
+        return "reference"
+
+    # Deduplicate by absolute src
+    _seen_srcs: set[str] = set()
     images: list[dict] = []
+
+    # -- 1. OG image (prepend at index 0, added last after we build the rest) --
+    _og_image_abs: str = urljoin(page_url, _og_image) if _og_image else ""
+
+    # -- 2. <img> tags (src, data-src, data-lazy-src for lazy-load) -----------
     for img in soup.find_all("img"):
-        src: str = img.get("src", "")
-        if not src:
+        # Try src, then data-src, then data-lazy-src
+        raw_src: str = (
+            img.get("src", "")
+            or img.get("data-src", "")
+            or img.get("data-lazy-src", "")
+        )
+        if not raw_src:
             continue
-        abs_src: str = urljoin(page_url, src)
+        if raw_src.startswith("data:"):
+            continue
+        abs_src: str = urljoin(page_url, raw_src)
+
         width_str: str = img.get("width", "")
         height_str: str = img.get("height", "")
+        w: int | None = int(width_str) if width_str.isdigit() else None
+        h: int | None = int(height_str) if height_str.isdigit() else None
+
+        # Skip tracking pixels (explicit dimension ≤ 2px on either axis)
+        if (w is not None and w <= 2) or (h is not None and h <= 2):
+            continue
+
+        if abs_src in _seen_srcs:
+            continue
+        _seen_srcs.add(abs_src)
+
         images.append(
             {
                 "src": abs_src,
                 "alt": img.get("alt", ""),
-                "width": int(width_str) if width_str.isdigit() else None,
-                "height": int(height_str) if height_str.isdigit() else None,
+                "width": w,
+                "height": h,
                 "role_hint": _image_role_hint(img, abs_src),
             }
         )
+
+    # -- 3. <picture><source srcset> — pick highest-resolution URL ------------
+    for picture in soup.find_all("picture"):
+        for source in picture.find_all("source"):
+            srcset_raw: str = source.get("srcset", "").strip()
+            if not srcset_raw:
+                continue
+            # Parse srcset: "url1 1x, url2 2x" or "url1 500w, url2 1000w"
+            best_url: str = ""
+            best_descriptor: float = -1.0
+            for part in srcset_raw.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                tokens = part.split()
+                if not tokens:
+                    continue
+                candidate_url = tokens[0]
+                if candidate_url.startswith("data:"):
+                    continue
+                # Parse descriptor (e.g. "2x" → 2.0, "1000w" → 1000.0)
+                descriptor: float = 1.0
+                if len(tokens) > 1:
+                    raw_desc = tokens[1].lower()
+                    try:
+                        if raw_desc.endswith("x"):
+                            descriptor = float(raw_desc[:-1])
+                        elif raw_desc.endswith("w"):
+                            descriptor = float(raw_desc[:-1])
+                    except ValueError:
+                        pass
+                if descriptor > best_descriptor:
+                    best_descriptor = descriptor
+                    best_url = candidate_url
+
+            if not best_url:
+                continue
+            abs_src = urljoin(page_url, best_url)
+            if abs_src in _seen_srcs:
+                continue
+            _seen_srcs.add(abs_src)
+            images.append(
+                {
+                    "src": abs_src,
+                    "alt": "",
+                    "width": None,
+                    "height": None,
+                    "role_hint": _image_role_hint(source, abs_src),
+                }
+            )
+
+    # -- 4. <link rel="preload" as="image"> -----------------------------------
+    for link_tag in soup.find_all("link", rel="preload"):
+        if link_tag.get("as", "").lower() != "image":
+            continue
+        preload_href: str = link_tag.get("href", "").strip()
+        if not preload_href or preload_href.startswith("data:"):
+            continue
+        abs_src = urljoin(page_url, preload_href)
+        if abs_src in _seen_srcs:
+            continue
+        _seen_srcs.add(abs_src)
+        images.append(
+            {
+                "src": abs_src,
+                "alt": "",
+                "width": None,
+                "height": None,
+                "role_hint": "reference",
+            }
+        )
+
+    # -- 5. CSS background-image in inline style attributes -------------------
+    for styled_tag in soup.find_all(style=True):
+        inline_style: str = styled_tag.get("style", "")
+        for match in _BG_URL_RE.finditer(inline_style):
+            bg_url: str = match.group(1).strip()
+            if not bg_url or bg_url.startswith("data:"):
+                continue
+            abs_src = urljoin(page_url, bg_url)
+            if abs_src in _seen_srcs:
+                continue
+            _seen_srcs.add(abs_src)
+            images.append(
+                {
+                    "src": abs_src,
+                    "alt": "",
+                    "width": None,
+                    "height": None,
+                    "role_hint": _bg_role_hint_from_node(styled_tag),
+                }
+            )
+
+    # -- 6. CSS background-image in <style> blocks ----------------------------
+    for style_tag in soup.find_all("style"):
+        style_text: str = style_tag.get_text() if style_tag else ""
+        for match in _BG_URL_RE.finditer(style_text):
+            bg_url = match.group(1).strip()
+            if not bg_url or bg_url.startswith("data:"):
+                continue
+            abs_src = urljoin(page_url, bg_url)
+            if abs_src in _seen_srcs:
+                continue
+            _seen_srcs.add(abs_src)
+            images.append(
+                {
+                    "src": abs_src,
+                    "alt": "",
+                    "width": None,
+                    "height": None,
+                    "role_hint": "reference",
+                }
+            )
+
+    # -- 7. Prepend OG image at index 0 (always banner) -----------------------
+    if _og_image_abs and not _og_image_abs.startswith("data:"):
+        og_entry: dict = {
+            "src": _og_image_abs,
+            "alt": og_data.get("og:image:alt", ""),
+            "width": None,
+            "height": None,
+            "role_hint": "banner",
+        }
+        if _og_image_abs in _seen_srcs:
+            # It was already captured — update its role to banner and move to front
+            images = [img for img in images if img["src"] != _og_image_abs]
+        images.insert(0, og_entry)
 
     # -- schema_org (JSON-LD) ------------------------------------------------
     schema_org: list[dict] = []

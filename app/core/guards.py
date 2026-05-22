@@ -20,6 +20,7 @@ from app.pipeline.auditor import run_auditor
 from app.pipeline.explorer import run_explorer
 from app.pipeline.extractor import run_extractor
 from app.pipeline.fetcher import run_fetcher
+from app.pipeline.image_crawler import run_image_crawler
 from app.pipeline.packager import run_packager
 from app.pipeline.reviewer import run_reviewer
 
@@ -180,6 +181,11 @@ async def run_pipeline(job_id: str) -> None:
         if not ok:
             return  # job already failed with EXTRACTION_EMPTY
 
+        try:
+            await run_image_crawler(job_id)
+        except Exception as _exc:
+            logger.warning("Image crawler failed for job %s: %s", job_id, _exc)
+
         if not await _check_still_running(job_id):
             return
 
@@ -218,6 +224,11 @@ async def run_pipeline(job_id: str) -> None:
                 ok = await run_extractor(job_id)
                 if not ok:
                     return
+
+                try:
+                    await run_image_crawler(job_id)
+                except Exception as _exc:
+                    logger.warning("Image crawler (2nd pass) failed for job %s: %s", job_id, _exc)
 
                 if not await _check_still_running(job_id):
                     return
