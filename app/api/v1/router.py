@@ -1,7 +1,7 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,7 +37,7 @@ _pipeline_tasks: dict[str, asyncio.Task] = {}  # type: ignore[type-arg]
 
 # Semaphore for pipeline concurrency control.
 # Lazily created so it's always bound to the running event loop.
-_pipeline_semaphore: asyncio.Semaphore | None = None
+_pipeline_semaphore: Optional[asyncio.Semaphore] = None
 
 
 def _get_semaphore() -> asyncio.Semaphore:
