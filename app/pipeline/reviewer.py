@@ -253,7 +253,15 @@ class LLMClient:
                         f"LLM retry after 5xx failed: {retry_exc}"
                     ) from retry_exc
 
-            # Other HTTP error — treat as parse error
+            # Other HTTP error — log body for diagnosis, then treat as parse error
+            try:
+                body_preview = exc.response.text[:500]
+            except Exception:
+                body_preview = "<unreadable>"
+            logger.error(
+                "LLM HTTP %d (provider=%s, model=%s) — body: %s",
+                status, self.provider, self.model, body_preview,
+            )
             raise LLMParseError(
                 f"Unexpected HTTP {status} from LLM provider"
             ) from exc
