@@ -18,7 +18,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import httpx
 
@@ -175,9 +175,11 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        # nvidia puede tardar — 120s de read (2 min); resto 60s
+        # nvidia: 2 min read; openai reasoning models pueden tardar 3 min; resto 60s
         if self.provider == "nvidia":
             timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
+        elif self.provider == "openai":
+            timeout = httpx.Timeout(connect=15.0, read=180.0, write=15.0, pool=15.0)
         else:
             timeout = httpx.Timeout(60.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -197,22 +199,106 @@ class LLMClient:
 
         return self._extract_content(response_json)
 
+    async def _do_request_streaming(
+        self,
+        messages: list[dict[str, Any]],
+        max_tokens: int,
+        temperature: float,
+        on_chunk: Callable[[], None],
+    ) -> str:
+        """
+        Streaming version for OpenAI-compatible providers (openai, nvidia, deepseek).
+        Calls on_chunk() on every content token — keeps the watchdog alive.
+        Read timeout = 30s between chunks (detects a silently stuck model).
+        Returns the accumulated content string (think-tags stripped).
+        Raises: LLMAuthError, httpx.HTTPStatusError, httpx.TimeoutException.
+        """
+        payload = self._build_payload(messages, max_tokens, temperature)
+        payload["stream"] = True
+        headers = self._build_headers()
+        timeout = httpx.Timeout(connect=15.0, read=30.0, write=15.0, pool=15.0)
+        content_parts: list[str] = []
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", self._url, json=payload, headers=headers) as response:
+                if response.status_code in (401, 403):
+                    await response.aread()
+                    raise LLMAuthError(
+                        f"LLM authentication failed: HTTP {response.status_code}"
+                    )
+                if response.status_code >= 400:
+                    await response.aread()
+                    try:
+                        body_preview = response.text[:500]
+                    except Exception:
+                        body_preview = "<unreadable>"
+                    logger.error(
+                        "LLM HTTP %d streaming (provider=%s, model=%s) — body: %s",
+                        response.status_code, self.provider, self.model, body_preview,
+                    )
+                    response.raise_for_status()
+
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk_json = json.loads(data_str)
+                        choices = chunk_json.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            text = delta.get("content") or ""
+                            if text:
+                                content_parts.append(text)
+                                on_chunk()
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+
+        return _strip_think_tags("".join(content_parts))
+
     async def complete(
         self,
         messages: list[dict[str, Any]],
         *,
         max_tokens: int,
         temperature: float,
+        on_chunk: Optional[Callable[[], None]] = None,
     ) -> str:
         """
         Sends a chat completion request. Returns the response text.
 
-        Error handling:
+        When on_chunk is provided and provider supports streaming (openai/nvidia/deepseek),
+        uses SSE streaming — on_chunk() fires on each token, keeping the watchdog alive.
+        Streaming read timeout = 30s between chunks (detects silently stuck models).
+
+        Non-streaming error handling:
         - httpx.TimeoutException  → return "" (Watchdog detects inactivity)
         - 401 / 403               → raise LLMAuthError
         - 429                     → asyncio.sleep(min(retry_after, 60)), retry once
         - 5xx / JSONDecodeError   → retry once; if still fails → raise LLMParseError
         """
+        # ── Streaming path ────────────────────────────────────────────────────
+        # Skip streaming for reasoning models (reasoning_effort set) — limited compatibility
+        if on_chunk is not None and self.provider in ("openai", "nvidia", "deepseek") and not self.reasoning_effort:
+            try:
+                return await self._do_request_streaming(
+                    messages, max_tokens, temperature, on_chunk
+                )
+            except httpx.TimeoutException:
+                logger.warning(
+                    "LLM streaming timed out (provider=%s, model=%s)", self.provider, self.model
+                )
+                return ""
+            except LLMAuthError:
+                raise
+            except httpx.HTTPStatusError as exc:
+                raise LLMParseError(
+                    f"Unexpected HTTP {exc.response.status_code} from LLM provider"
+                ) from exc
+
+        # ── Non-streaming path ────────────────────────────────────────────────
         try:
             return await self._do_request(messages, max_tokens, temperature)
 
@@ -830,7 +916,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             actual_provider = settings.LLM_FALLBACK_PROVIDER
             actual_model    = settings.LLM_FALLBACK_MODEL
             raw = await fallback_client.complete(  # type: ignore[union-attr]
-                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE,
+                on_chunk=activity_event.set,
             )
             if not raw:
                 return {}
@@ -839,7 +926,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         # Auth ya falló antes — ir directo al fallback sin intentar el primario
         if _use_fallback_only and fallback_client is not None:
             raw = await fallback_client.complete(
-                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE,
+                on_chunk=activity_event.set,
             )
             if not raw:
                 return {}
@@ -847,7 +935,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
 
         try:
             raw = await primary_client.complete(
-                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE,
+                on_chunk=activity_event.set,
             )
         except LLMAuthError:
             if fallback_client is None:
