@@ -63,6 +63,7 @@ _PROVIDER_URLS: dict[str, str] = {
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "minimax": "https://api.minimax.chat/v1/text/chatcompletion_v2",
+    "zai": "https://api.z.ai/v1/chat/completions",
 }
 
 
@@ -126,8 +127,8 @@ class LLMClient:
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        # openai, nvidia, deepseek support response_format; minimax does not
-        if self.provider in ("openai", "nvidia", "deepseek"):
+        # openai, nvidia, deepseek, zai support response_format; minimax does not
+        if self.provider in ("openai", "nvidia", "deepseek", "zai"):
             payload["response_format"] = {"type": "json_object"}
         # nvidia/kimi has reasoning on by default — disable to avoid <think> tags breaking JSON parse
         if self.provider == "nvidia":
@@ -168,9 +169,9 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        # nvidia/kimi reasoning models are slow — allow up to 240s for a read
-        if self.provider == "nvidia":
-            timeout = httpx.Timeout(connect=15.0, read=240.0, write=15.0, pool=15.0)
+        # nvidia y zai pueden tardar — 120s de read (2 min); resto 60s
+        if self.provider in ("nvidia", "zai"):
+            timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
         else:
             timeout = httpx.Timeout(60.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -210,16 +211,7 @@ class LLMClient:
             return await self._do_request(messages, max_tokens, temperature)
 
         except httpx.TimeoutException:
-            logger.warning("LLM request timed out (provider=%s)", self.provider)
-            if self.provider == "nvidia":
-                logger.warning("Nvidia NIM timeout — retrying once in 10s")
-                await asyncio.sleep(10)
-                try:
-                    return await self._do_request(messages, max_tokens, temperature)
-                except httpx.TimeoutException as exc:
-                    raise LLMParseError(
-                        "Nvidia NIM no responde — modelo ocupado o sin capacidad disponible"
-                    ) from exc
+            logger.warning("LLM request timed out (provider=%s, model=%s)", self.provider, self.model)
             return ""
 
         except LLMAuthError:
@@ -742,10 +734,10 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     if state is None or state.status == JobStatus.failed:
         return False
 
-    provider: str = (
+    primary_provider: str = (
         (state.options.get("llm_provider") or "") or settings.LLM_PROVIDER
     )
-    model: str = (
+    primary_model: str = (
         (state.options.get("llm_model") or "") or settings.LLM_MODEL
     )
     max_tokens_override: int = int(state.options.get("max_tokens") or settings.LLM_MAX_TOKENS)
@@ -763,7 +755,74 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         return False
 
     job_url_early: str = state.url
-    client = LLMClient(provider, model, settings.LLM_API_KEY)
+    primary_client = LLMClient(primary_provider, primary_model, settings.LLM_API_KEY)
+
+    # Fallback client (emergencia) — activo solo si LLM_FALLBACK_API_KEY está configurado
+    fallback_client: Optional[LLMClient] = None
+    if settings.LLM_FALLBACK_API_KEY and settings.LLM_FALLBACK_PROVIDER:
+        fallback_client = LLMClient(
+            settings.LLM_FALLBACK_PROVIDER,
+            settings.LLM_FALLBACK_MODEL,
+            settings.LLM_FALLBACK_API_KEY,
+        )
+
+    # Rastrea qué provider/model fue usado realmente (para los metadatos del resultado)
+    actual_provider: str = primary_provider
+    actual_model: str = primary_model
+    # Si el primario falla por auth, todas las llamadas restantes van directo al fallback
+    _use_fallback_only: bool = False
+
+    async def _call_llm(messages: list[dict[str, Any]], max_tokens: int) -> str:
+        """
+        Intenta el modelo principal; en caso de fallo o timeout (2 min) activa
+        automáticamente el modelo de emergencia.
+
+        - Timeout / sin respuesta  → fallback para esa llamada
+        - LLMAuthError principal   → fallback permanente (_use_fallback_only)
+        - LLMParseError principal  → fallback para esa llamada
+        Solo lanza si AMBOS modelos fallan.
+        """
+        nonlocal actual_provider, actual_model, _use_fallback_only
+
+        async def _activate_fallback(reason: str) -> str:
+            nonlocal actual_provider, actual_model
+            logger.warning(
+                "LLM principal %s (%s/%s) — activando modelo de emergencia (%s/%s)",
+                reason, primary_provider, primary_model,
+                settings.LLM_FALLBACK_PROVIDER, settings.LLM_FALLBACK_MODEL,
+            )
+            await job_manager.set_phase(job_id, "analyzing:fallback")
+            activity_event.set()
+            actual_provider = settings.LLM_FALLBACK_PROVIDER
+            actual_model    = settings.LLM_FALLBACK_MODEL
+            return await fallback_client.complete(  # type: ignore[union-attr]
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+            )
+
+        # Auth ya falló antes — ir directo al fallback sin intentar el primario
+        if _use_fallback_only and fallback_client is not None:
+            return await fallback_client.complete(
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+            )
+
+        try:
+            result = await primary_client.complete(
+                messages, max_tokens=max_tokens, temperature=settings.LLM_TEMPERATURE
+            )
+        except LLMAuthError:
+            if fallback_client is None:
+                raise
+            _use_fallback_only = True
+            return await _activate_fallback("auth error — deshabilitado permanentemente")
+        except LLMParseError:
+            if fallback_client is None:
+                raise
+            return await _activate_fallback("parse error")
+
+        if not result and fallback_client is not None:
+            return await _activate_fallback("sin respuesta (timeout 2 min)")
+
+        return result
 
     # 3b. Load image catalogue (optional — generated by image_crawler after extractor)
     src_to_catalogue: dict[str, dict] = {}
@@ -823,34 +882,25 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         batch_messages = build_schema_batch_prompt(pages_data, response_schema, src_to_catalogue, job_url_early)
 
         try:
-            raw_response: str = await client.complete(
-                batch_messages,
-                max_tokens=max_tokens_override,
-                temperature=settings.LLM_TEMPERATURE,
-            )
+            raw_response: str = await _call_llm(batch_messages, max_tokens_override)
         except LLMAuthError:
             await job_manager.fail_job(
-                job_id,
-                "LLM_AUTH_ERROR",
-                "API key inválida o sin créditos.",
+                job_id, "LLM_AUTH_ERROR",
+                "API key inválida o sin créditos (ambos modelos fallaron).",
             )
             return False
         except LLMParseError:
             await job_manager.fail_job(
-                job_id,
-                "LLM_PARSE_ERROR",
-                "Respuesta JSON inválida tras 2 intentos.",
+                job_id, "LLM_PARSE_ERROR",
+                "Respuesta JSON inválida tras reintentos con ambos modelos.",
                 retry_after=60,
             )
             return False
 
         if not raw_response:
-            # Guard 2 is cancelled by run_pipeline after we return False,
-            # so we must fail the job explicitly — never rely on the watchdog here.
             await job_manager.fail_job(
-                job_id,
-                "LLM_TIMEOUT",
-                "El modelo LLM no respondió (timeout en batch). Intenta de nuevo.",
+                job_id, "LLM_TIMEOUT",
+                "Ambos modelos LLM no respondieron (timeout 2 min). Intenta de nuevo.",
                 retry_after=300,
             )
             return False
@@ -896,32 +946,25 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         )
 
         try:
-            merged_raw: str = await client.complete(
-                merge_messages,
-                max_tokens=max_tokens_override,
-                temperature=settings.LLM_TEMPERATURE,
-            )
+            merged_raw: str = await _call_llm(merge_messages, max_tokens_override)
         except LLMAuthError:
             await job_manager.fail_job(
-                job_id,
-                "LLM_AUTH_ERROR",
-                "API key inválida o sin créditos.",
+                job_id, "LLM_AUTH_ERROR",
+                "API key inválida o sin créditos (ambos modelos fallaron).",
             )
             return False
         except LLMParseError:
             await job_manager.fail_job(
-                job_id,
-                "LLM_PARSE_ERROR",
-                "Respuesta JSON inválida tras 2 intentos.",
+                job_id, "LLM_PARSE_ERROR",
+                "Respuesta JSON inválida en consolidación.",
                 retry_after=60,
             )
             return False
 
         if not merged_raw:
             await job_manager.fail_job(
-                job_id,
-                "LLM_TIMEOUT",
-                "El modelo LLM no respondió en la fase de consolidación (timeout). Intenta de nuevo.",
+                job_id, "LLM_TIMEOUT",
+                "Ambos modelos LLM no respondieron en consolidación (timeout 2 min). Intenta de nuevo.",
                 retry_after=300,
             )
             return False
@@ -930,9 +973,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             merged = _parse_json_response(merged_raw)
         except LLMParseError:
             await job_manager.fail_job(
-                job_id,
-                "LLM_PARSE_ERROR",
-                "Respuesta JSON inválida tras 2 intentos.",
+                job_id, "LLM_PARSE_ERROR",
+                "Respuesta JSON inválida en consolidación (parse).",
                 retry_after=60,
             )
             return False
@@ -961,8 +1003,8 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
         merged=merged,
         valid_page_count=len(valid_hashes),
         audit_report=audit_report,
-        provider=provider,
-        model=model,
+        provider=actual_provider,
+        model=actual_model,
     )
 
     result_path: Path = job_dir / "result.json"

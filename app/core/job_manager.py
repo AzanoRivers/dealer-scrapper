@@ -133,6 +133,19 @@ class JobManager:
             state.updated_at = _now_iso()
             await self._write_state(state)
 
+    async def set_phase(self, job_id: str, phase: str) -> None:
+        """Updates progress.phase without touching other fields."""
+        async with self._get_lock(job_id):
+            state = await self.get_state(job_id)
+            if state is None:
+                return
+            if state.progress is not None:
+                state.progress.phase = phase
+            else:
+                state.progress = JobProgress(phase=phase)
+            state.updated_at = _now_iso()
+            await self._write_state(state)
+
     async def complete_job(self, job_id: str) -> None:
         """Marks job as done and writes done_at. Guard 3 (TTL) is launched by Packager in F08."""
         async with self._get_lock(job_id):
