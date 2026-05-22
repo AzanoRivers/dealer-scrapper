@@ -74,6 +74,7 @@ class ServerStatusResponse(BaseModel):
     name: str
     version: str
     active_jobs: int
+    queued_jobs: int = 0
     max_concurrent_jobs: int
     status: str
 

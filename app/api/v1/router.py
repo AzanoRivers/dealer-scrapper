@@ -35,6 +35,37 @@ _IMAGE_CONTENT_TYPES: dict[str, str] = {
 # cancellation before shutil.rmtree runs (prevents Windows file-lock races).
 _pipeline_tasks: dict[str, asyncio.Task] = {}  # type: ignore[type-arg]
 
+# Semaphore for pipeline concurrency control.
+# Lazily created so it's always bound to the running event loop.
+_pipeline_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    global _pipeline_semaphore
+    if _pipeline_semaphore is None:
+        _pipeline_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_JOBS)
+    return _pipeline_semaphore
+
+
+async def _run_pipeline_gated(job_id: str) -> None:
+    """Acquires the concurrency semaphore before running the pipeline.
+
+    While waiting, the job stays in 'queued' status — the CMS sees this and
+    shows the user a "waiting in queue" message.  Once a slot is free, the
+    semaphore is acquired and the pipeline starts normally.
+    """
+    # Bail out early if the job was deleted before we even got a slot.
+    state = await job_manager.get_state(job_id)
+    if state is None:
+        return
+
+    async with _get_semaphore():
+        # Re-check after acquiring — job may have been cancelled while waiting.
+        state = await job_manager.get_state(job_id)
+        if state is None or state.status != JobStatus.queued:
+            return
+        await run_pipeline(job_id)
+
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -64,11 +95,14 @@ def _job_not_found_response(job_id: str) -> JSONResponse:
     summary="Estado del servidor y jobs activos",
 )
 async def server_status(api_key: str = Depends(verify_api_key)) -> ServerStatusResponse:
+    queued = job_manager.queued_jobs_count
+    active = job_manager.active_jobs_count - queued
     return ServerStatusResponse(
         name=settings.PROJECT_NAME,
         version=settings.API_VERSION,
-        active_jobs=job_manager.active_jobs_count,
-        max_concurrent_jobs=1,
+        active_jobs=active,
+        queued_jobs=queued,
+        max_concurrent_jobs=settings.MAX_CONCURRENT_JOBS,
         status="ok",
     )
 
@@ -106,7 +140,7 @@ async def create_scrape_job(
     # Launch pipeline as a background asyncio Task unless ENABLE_PIPELINE=0
     # (used by integration tests to prevent real pipeline execution).
     if os.getenv("ENABLE_PIPELINE", "1") != "0":
-        pipeline_task: asyncio.Task = asyncio.create_task(run_pipeline(job_id))
+        pipeline_task: asyncio.Task = asyncio.create_task(_run_pipeline_gated(job_id))
         _pipeline_tasks[job_id] = pipeline_task
         job_manager.register_task(job_id, pipeline_task)
 

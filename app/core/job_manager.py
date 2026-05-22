@@ -258,6 +258,27 @@ class JobManager:
                 pass
         return count
 
+    @property
+    def queued_jobs_count(self) -> int:
+        """Counts job directories with 'queued' status (best effort, sync)."""
+        base = self._base_dir
+        if not base.exists():
+            return 0
+        count = 0
+        for job_dir in base.iterdir():
+            if not job_dir.is_dir():
+                continue
+            state_file = job_dir / "state.json"
+            if not state_file.exists():
+                continue
+            try:
+                data = json.loads(state_file.read_text(encoding="utf-8"))
+                if data.get("status") == "queued":
+                    count += 1
+            except Exception:
+                pass
+        return count
+
 
 # Singleton instance used across the application
 job_manager = JobManager()

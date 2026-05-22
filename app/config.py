@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     LLM_FALLBACK_MODEL: str = "moonshotai/kimi-k2.6"
     LLM_FALLBACK_API_KEY: str = ""  # si vacío, reutiliza LLM_API_KEY
 
+    # === Concurrencia de jobs ===
+    MAX_CONCURRENT_JOBS: int = 1
+
     # === Crawler ===
     MAX_CONCURRENT_FETCHES: int = 3
     MAX_PAGES_PER_JOB: int = 50
