@@ -82,18 +82,37 @@ _PROVIDER_URLS: dict[str, str] = {
 
 class LLMClient:
     """
-    Async wrapper over httpx for 5 LLM providers.
-    Supports: openai, nvidia, deepseek, anthropic, minimax.
+    Async wrapper over httpx for 6 LLM providers.
+    Supports: openai, nvidia, deepseek, anthropic, minimax, opencode.
     """
 
-    def __init__(self, provider: str, model: str, api_key: str, reasoning_effort: str = "") -> None:
+    def __init__(
+        self,
+        provider: str,
+        model: str,
+        api_key: str,
+        reasoning_effort: str = "",
+        session_id: str = "",
+    ) -> None:
         self.provider = provider
         self.model = model
         self.api_key = api_key
         self.reasoning_effort = reasoning_effort  # "" = standard model; "low|medium|high" = reasoning model
+        # OpenCode Go requires a stable x-opencode-session header per
+        # conversation/job (see docs linked in its 400 MissingSessionID
+        # error) — otherwise it rejects every request with HTTP 400.
+        self.session_id = session_id
         self._url: str = _PROVIDER_URLS.get(provider, _PROVIDER_URLS["openai"])
 
     def _build_headers(self) -> dict[str, str]:
+        if self.provider == "opencode":
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "content-type": "application/json",
+            }
+            if self.session_id:
+                headers["x-opencode-session"] = self.session_id
+            return headers
         if self.provider == "anthropic":
             return {
                 "x-api-key": self.api_key,
@@ -903,6 +922,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
     primary_client = LLMClient(
         primary_provider, primary_model, settings.LLM_API_KEY,
         reasoning_effort=settings.LLM_REASONING_EFFORT,
+        session_id=job_id,
     )
 
     # Fallback client (emergencia) — si LLM_FALLBACK_API_KEY está vacío, reutiliza LLM_API_KEY
@@ -914,6 +934,7 @@ async def run_reviewer(job_id: str, activity_event: asyncio.Event) -> bool:
             settings.LLM_FALLBACK_MODEL,
             _fallback_key,
             reasoning_effort=settings.LLM_FALLBACK_REASONING_EFFORT,
+            session_id=job_id,
         )
 
     # Rastrea qué provider/model fue usado realmente (para los metadatos del resultado)
