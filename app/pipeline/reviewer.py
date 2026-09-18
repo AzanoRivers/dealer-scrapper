@@ -205,7 +205,29 @@ class LLMClient:
         except Exception as exc:
             raise LLMParseError(f"Cannot parse LLM JSON response: {exc}") from exc
 
-        return self._extract_content(response_json)
+        content = self._extract_content(response_json)
+
+        if not content:
+            # HTTP 200 but empty text — distinct from a network timeout.
+            # Common cause with reasoning models: reasoning_effort burned
+            # the whole max_tokens/max_completion_tokens budget on internal
+            # reasoning, leaving nothing for the actual output (finish_reason
+            # "length"). This still gets billed, which is why usage shows
+            # up even though the job ultimately fails — log enough to tell
+            # the two cases apart.
+            choices = response_json.get("choices", [])
+            finish_reason = choices[0].get("finish_reason") if choices else None
+            usage = response_json.get("usage", {})
+            logger.warning(
+                "LLM HTTP 200 with EMPTY content (provider=%s, model=%s) — "
+                "finish_reason=%s, usage=%s. If finish_reason=='length' and "
+                "reasoning_effort is set, the model likely spent the whole "
+                "token budget reasoning and left none for the output — "
+                "raise max_tokens or unset reasoning_effort for this model.",
+                self.provider, self.model, finish_reason, usage,
+            )
+
+        return content
 
     async def _do_request_streaming(
         self,
