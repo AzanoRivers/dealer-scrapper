@@ -63,11 +63,15 @@ _PROVIDER_URLS: dict[str, str] = {
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "minimax": "https://api.minimax.chat/v1/text/chatcompletion_v2",
-    # OpenCode Zen — OpenAI-compatible gateway that proxies to many providers
-    # (GLM, GPT, Kimi, DeepSeek, etc). One API key covers every model id
-    # under the "opencode/" prefix, e.g. "opencode/glm-5.3-flash",
-    # "opencode/gpt-5.4-mini". https://opencode.ai/docs/zen/
-    "opencode": "https://opencode.ai/zen/v1/chat/completions",
+    # OpenCode Go — OpenAI-compatible gateway that proxies to many providers
+    # (GLM, GPT, Kimi, DeepSeek, etc) under a single subscription/API key.
+    # NOTE: this is the "/go/" base path specifically for the Go plan —
+    # verified against the live API (GET /v1/models) in the modus-ratio
+    # project's scoringClient.ts. Do not change without re-verifying there
+    # first; the generic "zen" path (no "/go/") documented publicly for
+    # OpenCode Zen is a DIFFERENT endpoint and rejected this project's key.
+    # Model IDs are bare (no "opencode/" prefix), e.g. "glm-5.3-flash".
+    "opencode": "https://opencode.ai/zen/go/v1/chat/completions",
 }
 
 
