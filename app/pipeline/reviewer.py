@@ -63,6 +63,11 @@ _PROVIDER_URLS: dict[str, str] = {
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
     "anthropic": "https://api.anthropic.com/v1/messages",
     "minimax": "https://api.minimax.chat/v1/text/chatcompletion_v2",
+    # OpenCode Zen — OpenAI-compatible gateway that proxies to many providers
+    # (GLM, GPT, Kimi, DeepSeek, etc). One API key covers every model id
+    # under the "opencode/" prefix, e.g. "opencode/glm-5.3-flash",
+    # "opencode/gpt-5.4-mini". https://opencode.ai/docs/zen/
+    "opencode": "https://opencode.ai/zen/v1/chat/completions",
 }
 
 
@@ -133,8 +138,8 @@ class LLMClient:
             payload["reasoning_effort"] = self.reasoning_effort
         else:
             payload["temperature"] = temperature
-        # openai, nvidia, deepseek support response_format; minimax does not
-        if self.provider in ("openai", "nvidia", "deepseek"):
+        # openai, nvidia, deepseek, opencode support response_format; minimax does not
+        if self.provider in ("openai", "nvidia", "deepseek", "opencode"):
             payload["response_format"] = {"type": "json_object"}
         # nvidia/kimi has reasoning on by default — disable to avoid <think> tags breaking JSON parse
         if self.provider == "nvidia":
@@ -175,11 +180,14 @@ class LLMClient:
         payload = self._build_payload(messages, max_tokens, temperature)
         headers = self._build_headers()
 
-        # nvidia: 2 min read; openai reasoning models pueden tardar 3 min; resto 60s
+        # nvidia: 2 min read; openai reasoning models pueden tardar 3 min;
+        # opencode es un proxy a otro proveedor — dale el mismo margen que nvidia; resto 60s
         if self.provider == "nvidia":
             timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
         elif self.provider == "openai":
             timeout = httpx.Timeout(connect=15.0, read=180.0, write=15.0, pool=15.0)
+        elif self.provider == "opencode":
+            timeout = httpx.Timeout(connect=15.0, read=120.0, write=15.0, pool=15.0)
         else:
             timeout = httpx.Timeout(60.0)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -281,7 +289,7 @@ class LLMClient:
         """
         # ── Streaming path ────────────────────────────────────────────────────
         # Skip streaming for reasoning models (reasoning_effort set) — limited compatibility
-        if on_chunk is not None and self.provider in ("openai", "nvidia", "deepseek") and not self.reasoning_effort:
+        if on_chunk is not None and self.provider in ("openai", "nvidia", "deepseek", "opencode") and not self.reasoning_effort:
             try:
                 return await self._do_request_streaming(
                     messages, max_tokens, temperature, on_chunk
